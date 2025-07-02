@@ -8,9 +8,11 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+node_modules_ffmpeg
 dist
 dist-ssr
 *.local
+uploads
 
 # Editor directories and files
 .vscode/*

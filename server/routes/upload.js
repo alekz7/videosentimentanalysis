@@ -55,8 +55,13 @@ router.post('/', upload.single('video'), async (req, res) => {
     const videoId = uuidv4();
     const filePath = req.file.path;
 
+    console.log(`📹 Processing upload for video: ${req.file.originalname}`);
+    console.log(`📁 File saved to: ${filePath}`);
+    console.log(`🆔 Video ID: ${videoId}`);
+
     // Get video metadata
     const metadata = await videoProcessor.getVideoMetadata(filePath);
+    console.log(`⏱️ Video duration: ${metadata.duration} seconds`);
 
     // Check video duration (max 2 minutes)
     if (metadata.duration > 120) {
@@ -71,9 +76,11 @@ router.post('/', upload.single('video'), async (req, res) => {
       [videoId, req.file.filename, req.file.originalname, req.file.size, metadata.duration, filePath, 'uploaded'],
       function(err) {
         if (err) {
-          console.error('Database error:', err);
+          console.error('❌ Database error:', err);
           return res.status(500).json({ error: 'Failed to save video record' });
         }
+        
+        console.log(`✅ Video record saved to database`);
       }
     );
 
@@ -86,7 +93,7 @@ router.post('/', upload.single('video'), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('❌ Upload error:', error);
     
     // Clean up uploaded file on error
     if (req.file && fs.existsSync(req.file.path)) {
@@ -103,6 +110,8 @@ router.post('/:videoId/process', async (req, res) => {
   const jobId = uuidv4();
 
   try {
+    console.log(`🚀 Starting processing for video: ${videoId}, job: ${jobId}`);
+
     // Create analysis job
     db.run(
       `INSERT INTO analysis_jobs (id, video_id, status, started_at)
@@ -120,7 +129,7 @@ router.post('/:videoId/process', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Process error:', error);
+    console.error('❌ Process error:', error);
     res.status(500).json({ error: 'Failed to start processing: ' + error.message });
   }
 });
@@ -134,6 +143,7 @@ router.get('/:videoId/status/:jobId', (req, res) => {
     [jobId, videoId],
     (err, job) => {
       if (err) {
+        console.error('❌ Database error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
 
@@ -160,6 +170,7 @@ router.get('/:videoId/results', (req, res) => {
     [videoId],
     (err, video) => {
       if (err || !video) {
+        console.error('❌ Video not found:', err);
         return res.status(404).json({ error: 'Video not found' });
       }
 
@@ -170,10 +181,14 @@ router.get('/:videoId/results', (req, res) => {
         [videoId],
         (err, sentiments) => {
           if (err) {
+            console.error('❌ Database error:', err);
             return res.status(500).json({ error: 'Database error' });
           }
 
           const videoUrl = video.s3_url || `/uploads/${video.filename}`;
+
+          console.log(`📊 Returning results for video: ${video.original_filename}`);
+          console.log(`📈 Sentiment data points: ${sentiments?.length || 0}`);
 
           res.json({
             id: video.id,
@@ -193,6 +208,8 @@ router.get('/:videoId/results', (req, res) => {
 // Background processing function
 async function processVideoAsync(videoId, jobId) {
   try {
+    console.log(`🔄 Starting background processing for video: ${videoId}`);
+
     // Update job status
     const updateJobStatus = (status, progress = null, error = null) => {
       const fields = ['status = ?'];
@@ -217,7 +234,14 @@ async function processVideoAsync(videoId, jobId) {
 
       db.run(
         `UPDATE analysis_jobs SET ${fields.join(', ')} WHERE id = ?`,
-        values
+        values,
+        (err) => {
+          if (err) {
+            console.error('❌ Failed to update job status:', err);
+          } else {
+            console.log(`📊 Job ${jobId} status updated: ${status} (${progress}%)`);
+          }
+        }
       );
     };
 
@@ -233,10 +257,19 @@ async function processVideoAsync(videoId, jobId) {
       throw new Error('Video not found');
     }
 
+    console.log(`📹 Processing video: ${video.original_filename}`);
+
     updateJobStatus('compressing', 10);
 
     // Compress video
-    const compressedPath = `./temp/compressed/${videoId}.mp4`;
+    const compressedDir = './temp/compressed';
+    if (!fs.existsSync(compressedDir)) {
+      fs.mkdirSync(compressedDir, { recursive: true });
+    }
+    
+    const compressedPath = path.join(compressedDir, `${videoId}.mp4`);
+    console.log(`🗜️ Compressing video to: ${compressedPath}`);
+    
     await videoProcessor.compressVideo(video.local_path, compressedPath, (progress) => {
       updateJobStatus('compressing', 10 + (progress * 0.2));
     });
@@ -244,52 +277,78 @@ async function processVideoAsync(videoId, jobId) {
     updateJobStatus('uploading', 30);
 
     // Upload to S3 or keep local
+    console.log(`☁️ Uploading to S3...`);
     const uploadResult = await s3Service.uploadVideo(compressedPath, `${videoId}.mp4`);
+    console.log(`✅ Upload result:`, uploadResult);
     
     // Update video record with S3 URL
     db.run(
       `UPDATE videos SET s3_url = ?, status = ? WHERE id = ?`,
-      [uploadResult.url, 'processed', videoId]
+      [uploadResult.url, 'processed', videoId],
+      (err) => {
+        if (err) {
+          console.error('❌ Failed to update video record:', err);
+        } else {
+          console.log(`✅ Video record updated with S3 URL`);
+        }
+      }
     );
 
     updateJobStatus('analyzing', 40);
 
     // Extract frames
+    console.log(`🎞️ Extracting frames...`);
     const frames = await videoProcessor.extractFrames(compressedPath, videoId, (progress) => {
       updateJobStatus('analyzing', 40 + (progress * 0.3));
     });
+    console.log(`📸 Extracted ${frames.length} frames`);
 
     updateJobStatus('analyzing', 70);
 
     // Analyze sentiment
+    console.log(`🧠 Analyzing sentiment...`);
     const sentimentResults = await sentimentAnalyzer.analyzeBatch(frames, (progress) => {
       updateJobStatus('analyzing', 70 + (progress * 0.25));
     });
+    console.log(`📊 Generated ${sentimentResults.length} sentiment results`);
 
     // Save sentiment results
+    console.log(`💾 Saving sentiment results to database...`);
     for (const result of sentimentResults) {
       db.run(
         `INSERT INTO sentiment_results (video_id, timestamp, sentiment, confidence)
          VALUES (?, ?, ?, ?)`,
-        [videoId, result.timestamp, result.sentiment, result.confidence]
+        [videoId, result.timestamp, result.sentiment, result.confidence],
+        (err) => {
+          if (err) {
+            console.error('❌ Failed to save sentiment result:', err);
+          }
+        }
       );
     }
 
     // Cleanup temporary files
+    console.log(`🧹 Cleaning up temporary files...`);
     await videoProcessor.cleanup(videoId);
     if (fs.existsSync(compressedPath)) {
       fs.unlinkSync(compressedPath);
     }
 
     updateJobStatus('completed', 100);
+    console.log(`✅ Processing completed for video: ${videoId}`);
 
   } catch (error) {
-    console.error('Processing error:', error);
+    console.error('❌ Processing error:', error);
     
     // Update job with error
     db.run(
       `UPDATE analysis_jobs SET status = ?, error_message = ?, completed_at = ? WHERE id = ?`,
-      ['failed', error.message, new Date().toISOString(), jobId]
+      ['failed', error.message, new Date().toISOString(), jobId],
+      (err) => {
+        if (err) {
+          console.error('❌ Failed to update job with error:', err);
+        }
+      }
     );
 
     // Cleanup on error

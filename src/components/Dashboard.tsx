@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, Filter, Eye, Brain, Download, Share2, Target, Image } from 'lucide-react';
+import { BarChart3, Filter, Eye, Brain, Download, Share2, Target, Image, Wifi, WifiOff } from 'lucide-react';
 import { VideoAnalysis } from '../types';
 import { sentimentLabels, sentimentColors } from '../utils/mockData';
 import VideoPlayer from './VideoPlayer';
@@ -93,12 +93,12 @@ const Dashboard: React.FC<DashboardProps> = ({ analysis, isMockMode, onToggleMoc
               onClick={onToggleMockMode}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
                 isMockMode 
-                  ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' 
-                  : 'bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
+                  : 'bg-green-500/20 text-green-400 border border-green-500/30'
               }`}
             >
-              {isMockMode ? <Eye size={18} /> : <Brain size={18} />}
-              {isMockMode ? 'Mock Mode' : 'Live Analysis'}
+              {isMockMode ? <WifiOff size={18} /> : <Wifi size={18} />}
+              {isMockMode ? 'Demo Mode' : 'Live Analysis'}
             </button>
             
             <button
@@ -115,6 +115,22 @@ const Dashboard: React.FC<DashboardProps> = ({ analysis, isMockMode, onToggleMoc
             </button>
           </div>
         </motion.div>
+
+        {/* Mode Indicator */}
+        {isMockMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg"
+          >
+            <div className="flex items-center gap-2 text-amber-400">
+              <WifiOff size={16} />
+              <span className="text-sm font-medium">
+                Demo Mode Active - Using simulated data for demonstration purposes
+              </span>
+            </div>
+          </motion.div>
+        )}
 
         {/* Stats Cards */}
         <motion.div
@@ -175,6 +191,11 @@ const Dashboard: React.FC<DashboardProps> = ({ analysis, isMockMode, onToggleMoc
               <h2 className="text-xl font-semibold text-white mb-2 flex items-center gap-2">
                 <BarChart3 className="text-primary-500" size={24} />
                 Video Analysis
+                {selectedSentiment && (
+                  <span className="text-sm text-gray-400 ml-2">
+                    • Showing {sentimentLabels[selectedSentiment as keyof typeof sentimentLabels]} markers
+                  </span>
+                )}
               </h2>
             </div>
             <VideoPlayer
@@ -182,6 +203,8 @@ const Dashboard: React.FC<DashboardProps> = ({ analysis, isMockMode, onToggleMoc
               currentTime={currentTime}
               onTimeUpdate={handleTimeUpdate}
               onSeek={handleSeek}
+              sentiments={analysis.sentiments}
+              selectedSentiment={selectedSentiment}
             />
           </motion.div>
 
