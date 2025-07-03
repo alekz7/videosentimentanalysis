@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 app.use(
   cors({
     // origin: ["http://localhost:5173", "http://localhost:3000"], // Allow Vite dev server
-    origin: ["https://playful-manatee-e3dc81.netlify.app/"],
+    origin: ["https://playful-manatee-e3dc81.netlify.app"],
     credentials: true,
   })
 );
