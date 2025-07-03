@@ -21,7 +21,8 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"], // Allow Vite dev server
+    // origin: ["http://localhost:5173", "http://localhost:3000"], // Allow Vite dev server
+    origin: ["https://playful-manatee-e3dc81.netlify.app/"],
     credentials: true,
   })
 );
@@ -46,11 +47,9 @@ app.use((error, req, res, next) => {
         .json({ error: "File too large. Maximum size is 100MB." });
     }
     if (error.code === "LIMIT_UNEXPECTED_FILE") {
-      return res
-        .status(400)
-        .json({
-          error: 'Unexpected file field. Please use "video" field name.',
-        });
+      return res.status(400).json({
+        error: 'Unexpected file field. Please use "video" field name.',
+      });
     }
   }
 
