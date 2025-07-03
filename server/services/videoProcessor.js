@@ -1,4 +1,18 @@
+import { execSync } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
+
+try {
+  const ffmpegPath = execSync("which ffmpeg").toString().trim();
+  const ffprobePath = execSync("which ffprobe").toString().trim();
+
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  ffmpeg.setFfprobePath(ffprobePath);
+  console.log("FFMPEG ruta:", ffmpegPath);
+  console.log("FFPROBE ruta:", ffprobePath);
+} catch (err) {
+  console.error("Couldn't found ffmpeg/ffprobe:", err);
+}
+
 // ffmpeg.setFfmpegPath(
 //   "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffmpeg.exe"
 // );
