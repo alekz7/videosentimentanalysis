@@ -6,7 +6,8 @@ import path from "path";
 export class SentimentAnalyzer {
   constructor() {
     this.mockMode =
-      process.env.NODE_ENV === "development" && !process.env.AWS_ACCESS_KEY_ID;
+      process.env.NODE_ENV === "development" &&
+      !process.env.MY_APP_AWS_ACCESS_KEY_ID;
     this.rekognition = rekognition;
     this.s3Service = new S3Service();
   }

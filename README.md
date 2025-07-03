@@ -14,6 +14,7 @@ A sophisticated web application that analyzes facial expressions and emotions in
 ## Tech Stack
 
 ### Frontend
+
 - React 18 with TypeScript
 - Tailwind CSS for styling
 - Framer Motion for animations
@@ -21,6 +22,7 @@ A sophisticated web application that analyzes facial expressions and emotions in
 - Lucide React for icons
 
 ### Backend
+
 - Node.js with Express
 - SQLite database
 - AWS SDK (S3 + Bedrock)
@@ -30,11 +32,13 @@ A sophisticated web application that analyzes facial expressions and emotions in
 ## Setup Instructions
 
 ### 1. Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 2. Environment Configuration
+
 Copy `.env.example` to `.env` and configure your settings:
 
 ```bash
@@ -42,32 +46,38 @@ cp .env.example .env
 ```
 
 Required environment variables:
-- `AWS_ACCESS_KEY_ID` - Your AWS access key
-- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
-- `AWS_S3_BUCKET` - S3 bucket name for video storage
+
+- `MY_APP_AWS_ACCESS_KEY_ID` - Your AWS access key
+- `MY_APP_AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+- `MY_APP_AWS_S3_BUCKET` - S3 bucket name for video storage
 - `BEDROCK_MODEL_ID` - Amazon Bedrock model ID for sentiment analysis
 
 ### 3. AWS Setup (Optional)
 
 #### S3 Bucket Configuration:
+
 1. Create an S3 bucket in your AWS account
 2. Configure bucket permissions for public read access
 3. Update the bucket name in your `.env` file
 
 #### Amazon Bedrock Setup:
+
 1. Enable Amazon Bedrock in your AWS account
 2. Request access to Claude 3 Sonnet model
 3. Update the model ID in your `.env` file
 
 ### 4. FFmpeg Installation
+
 Install FFmpeg for video processing:
 
 **macOS:**
+
 ```bash
 brew install ffmpeg
 ```
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt update
 sudo apt install ffmpeg
@@ -79,16 +89,19 @@ Download from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.htm
 ### 5. Run the Application
 
 #### Development Mode (Frontend + Backend):
+
 ```bash
 npm run dev:full
 ```
 
 #### Frontend Only:
+
 ```bash
 npm run dev
 ```
 
 #### Backend Only:
+
 ```bash
 npm run server
 ```
@@ -96,6 +109,7 @@ npm run server
 ## API Endpoints
 
 ### Upload Video
+
 ```
 POST /api/upload
 Content-Type: multipart/form-data
@@ -104,21 +118,25 @@ Body: video file (max 100MB, 2 minutes)
 ```
 
 ### Process Video
+
 ```
 POST /api/upload/:videoId/process
 ```
 
 ### Check Processing Status
+
 ```
 GET /api/upload/:videoId/status/:jobId
 ```
 
 ### Get Analysis Results
+
 ```
 GET /api/upload/:videoId/results
 ```
 
 ### Health Check
+
 ```
 GET /api/health
 ```
@@ -134,6 +152,7 @@ GET /api/health
 ## Mock Mode
 
 The application includes a comprehensive mock mode that works without AWS services:
+
 - Simulated video processing with realistic progress updates
 - Generated sentiment data based on video timestamps
 - Full dashboard functionality for demonstrations
@@ -141,6 +160,7 @@ The application includes a comprehensive mock mode that works without AWS servic
 ## Architecture
 
 ### Video Processing Pipeline:
+
 1. **Upload** → Multer handles file upload with validation
 2. **Compression** → FFmpeg compresses video for optimal processing
 3. **Storage** → Upload to S3 or store locally as fallback
@@ -150,6 +170,7 @@ The application includes a comprehensive mock mode that works without AWS servic
 7. **Dashboard** → Interactive visualization of results
 
 ### Database Schema:
+
 - `videos` - Video metadata and file information
 - `sentiment_results` - Frame-by-frame sentiment analysis
 - `analysis_jobs` - Processing job status and progress
@@ -157,6 +178,7 @@ The application includes a comprehensive mock mode that works without AWS servic
 ## Deployment
 
 ### Production Checklist:
+
 - [ ] Configure AWS credentials and services
 - [ ] Set up production database (PostgreSQL recommended)
 - [ ] Configure HTTPS and domain
@@ -165,11 +187,12 @@ The application includes a comprehensive mock mode that works without AWS servic
 - [ ] Optimize video processing for scale
 
 ### Environment Variables for Production:
+
 ```bash
 NODE_ENV=production
-AWS_ACCESS_KEY_ID=your_production_key
-AWS_SECRET_ACCESS_KEY=your_production_secret
-AWS_S3_BUCKET=your_production_bucket
+MY_APP_AWS_ACCESS_KEY_ID=your_production_key
+MY_APP_AWS_SECRET_ACCESS_KEY=your_production_secret
+MY_APP_AWS_S3_BUCKET=your_production_bucket
 DATABASE_URL=your_production_database_url
 ```
 

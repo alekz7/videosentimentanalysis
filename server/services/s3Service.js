@@ -5,7 +5,7 @@ import path from "path";
 export class S3Service {
   constructor() {
     this.bucket = S3_BUCKET;
-    this.useS3 = !!process.env.AWS_ACCESS_KEY_ID && !!S3_BUCKET;
+    this.useS3 = !!process.env.MY_APP_AWS_ACCESS_KEY_ID && !!S3_BUCKET;
   }
 
   async uploadVideo(filePath, key) {
