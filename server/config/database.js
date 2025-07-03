@@ -1,67 +1,119 @@
-import sqlite3 from 'sqlite3';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import fs from 'fs';
+import { MongoClient } from 'mongodb';
+import dotenv from 'dotenv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+dotenv.config();
 
-const dbPath = process.env.DATABASE_PATH || join(__dirname, '../data/sentiment_analysis.db');
-const dbDir = dirname(dbPath);
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/video-sentiment-analyzer';
+const DB_NAME = 'video-sentiment-analyzer';
 
-// Ensure data directory exists
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+class Database {
+  constructor() {
+    this.client = null;
+    this.db = null;
+    this.isConnected = false;
+  }
+
+  async connect() {
+    try {
+      if (this.isConnected) {
+        return this.db;
+      }
+
+      console.log('🔌 Connecting to MongoDB...');
+      this.client = new MongoClient(MONGODB_URI);
+      await this.client.connect();
+      
+      this.db = this.client.db(DB_NAME);
+      this.isConnected = true;
+      
+      console.log('✅ Connected to MongoDB successfully');
+      
+      // Create indexes for better performance
+      await this.createIndexes();
+      
+      return this.db;
+    } catch (error) {
+      console.error('❌ MongoDB connection error:', error);
+      throw error;
+    }
+  }
+
+  async createIndexes() {
+    try {
+      // Index for videos collection
+      await this.db.collection('videos').createIndex({ status: 1 });
+      await this.db.collection('videos').createIndex({ created_at: -1 });
+      
+      // Index for analysis_jobs collection
+      await this.db.collection('analysis_jobs').createIndex({ video_id: 1 });
+      await this.db.collection('analysis_jobs').createIndex({ status: 1 });
+      await this.db.collection('analysis_jobs').createIndex({ created_at: -1 });
+      
+      // Index for sentiment_results collection
+      await this.db.collection('sentiment_results').createIndex({ video_id: 1 });
+      await this.db.collection('sentiment_results').createIndex({ video_id: 1, timestamp: 1 });
+      
+      console.log('📊 Database indexes created successfully');
+    } catch (error) {
+      console.error('⚠️ Error creating indexes:', error);
+    }
+  }
+
+  async disconnect() {
+    try {
+      if (this.client) {
+        await this.client.close();
+        this.isConnected = false;
+        console.log('🔌 Disconnected from MongoDB');
+      }
+    } catch (error) {
+      console.error('❌ Error disconnecting from MongoDB:', error);
+    }
+  }
+
+  async checkConnection() {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      
+      // Ping the database
+      await this.db.admin().ping();
+      return { connected: true };
+    } catch (error) {
+      return { connected: false, reason: error.message };
+    }
+  }
+
+  // Collection getters for easy access
+  get videos() {
+    return this.db.collection('videos');
+  }
+
+  get analysisJobs() {
+    return this.db.collection('analysis_jobs');
+  }
+
+  get sentimentResults() {
+    return this.db.collection('sentiment_results');
+  }
 }
 
-const db = new sqlite3.Database(dbPath);
+// Create singleton instance
+const database = new Database();
 
-// Initialize database tables
-db.serialize(() => {
-  // Videos table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS videos (
-      id TEXT PRIMARY KEY,
-      filename TEXT NOT NULL,
-      original_filename TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
-      duration REAL,
-      s3_url TEXT,
-      local_path TEXT,
-      status TEXT DEFAULT 'uploaded',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+// Connect on startup
+database.connect().catch(console.error);
 
-  // Sentiment analysis results table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS sentiment_results (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      video_id TEXT NOT NULL,
-      timestamp TEXT NOT NULL,
-      sentiment TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      frame_path TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (video_id) REFERENCES videos (id)
-    )
-  `);
-
-  // Analysis jobs table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS analysis_jobs (
-      id TEXT PRIMARY KEY,
-      video_id TEXT NOT NULL,
-      status TEXT DEFAULT 'pending',
-      progress INTEGER DEFAULT 0,
-      error_message TEXT,
-      started_at DATETIME,
-      completed_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (video_id) REFERENCES videos (id)
-    )
-  `);
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await database.disconnect();
+  process.exit(0);
 });
 
-export default db;
+process.on('SIGTERM', async () => {
+  await database.disconnect();
+  process.exit(0);
+});
+
+export default database;

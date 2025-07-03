@@ -12,6 +12,8 @@ export const useVideoAnalysis = () => {
   const [isMockMode, setIsMockMode] = useState(false); // Default to real mode
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const simulateProgress = useCallback((onComplete: () => void) => {
     const stages = [
@@ -104,8 +106,8 @@ export const useVideoAnalysis = () => {
   }, []);
 
   const pollProcessingStatus = useCallback(async (videoId: string, jobId: string): Promise<void> => {
-    const pollInterval = 1000; // Poll every second
-    const maxAttempts = 300; // 5 minutes max
+    const pollInterval = 2000; // Poll every 2 seconds
+    const maxAttempts = 300; // 10 minutes max
     let attempts = 0;
 
     const poll = async (): Promise<void> => {
@@ -143,10 +145,13 @@ export const useVideoAnalysis = () => {
         });
 
         if (status === 'completed') {
+          setIsProcessing(false);
           return; // Processing complete
         } else if (status === 'failed') {
+          setIsProcessing(false);
           throw new Error('Video processing failed');
         } else if (attempts >= maxAttempts) {
+          setIsProcessing(false);
           throw new Error('Processing timeout - please try again');
         } else {
           // Continue polling
@@ -154,6 +159,7 @@ export const useVideoAnalysis = () => {
         }
       } catch (error) {
         console.error('Polling error:', error);
+        setIsProcessing(false);
         throw error;
       }
     };
@@ -174,8 +180,33 @@ export const useVideoAnalysis = () => {
     }
   }, []);
 
+  const fetchAnalysisHistory = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/upload/history`);
+      return response.data.history || [];
+    } catch (error) {
+      console.error('History fetch error:', error);
+      throw new Error('Failed to fetch analysis history');
+    }
+  }, []);
+
+  const loadAnalysisById = useCallback(async (videoId: string) => {
+    try {
+      setIsLoadingHistory(true);
+      const analysisResult = await getAnalysisResults(videoId);
+      setAnalysis(analysisResult);
+      setIsProcessing(false); // Ensure processing state is cleared
+    } catch (error) {
+      console.error('Load analysis error:', error);
+      throw error;
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [getAnalysisResults]);
+
   const processVideo = useCallback(async (file: File, url: string) => {
     setIsUploading(true);
+    setIsProcessing(false);
     setProgress({ percentage: 0, stage: 'uploading', message: 'Starting upload...' });
 
     try {
@@ -209,18 +240,40 @@ export const useVideoAnalysis = () => {
         const jobId = await startProcessing(uploadResult.videoId);
         setCurrentJobId(jobId);
 
-        // Step 3: Poll for completion
-        await pollProcessingStatus(uploadResult.videoId, jobId);
+        // Step 3: Create initial analysis object for dashboard
+        const initialAnalysis: VideoAnalysis = {
+          id: uploadResult.videoId,
+          filename: uploadResult.filename,
+          duration: uploadResult.duration,
+          url: url,
+          sentiments: [],
+          status: 'processing',
+          createdAt: new Date(),
+        };
 
-        // Step 4: Get final results
-        setProgress({ percentage: 100, stage: 'completed', message: 'Loading results...' });
-        const analysisResult = await getAnalysisResults(uploadResult.videoId);
-
-        setAnalysis(analysisResult);
+        setAnalysis(initialAnalysis);
         setIsUploading(false);
-        setProgress(null);
-        setCurrentJobId(null);
-        setCurrentVideoId(null);
+        setIsProcessing(true);
+
+        // Step 4: Poll for completion in background
+        try {
+          await pollProcessingStatus(uploadResult.videoId, jobId);
+          
+          // Step 5: Get final results when completed
+          const analysisResult = await getAnalysisResults(uploadResult.videoId);
+          setAnalysis(analysisResult);
+          setProgress(null);
+          setCurrentJobId(null);
+          setCurrentVideoId(null);
+        } catch (pollError) {
+          // If polling fails, we still have the initial analysis object
+          console.error('Polling failed:', pollError);
+          setProgress({
+            percentage: 0,
+            stage: 'uploading',
+            message: `Error: ${pollError instanceof Error ? pollError.message : 'Processing failed'}`,
+          });
+        }
       }
     } catch (error) {
       console.error('Video processing error:', error);
@@ -233,6 +286,7 @@ export const useVideoAnalysis = () => {
       // Reset after showing error for a moment
       setTimeout(() => {
         setIsUploading(false);
+        setIsProcessing(false);
         setProgress(null);
         setCurrentJobId(null);
         setCurrentVideoId(null);
@@ -247,18 +301,26 @@ export const useVideoAnalysis = () => {
   const reset = useCallback(() => {
     setAnalysis(null);
     setIsUploading(false);
+    setIsProcessing(false);
     setProgress(null);
     setCurrentJobId(null);
     setCurrentVideoId(null);
+    setIsLoadingHistory(false);
   }, []);
 
   return {
     isUploading,
+    isProcessing,
     progress,
     analysis,
     isMockMode,
+    isLoadingHistory,
+    currentVideoId,
+    currentJobId,
     processVideo,
     toggleMockMode,
     reset,
+    fetchAnalysisHistory,
+    loadAnalysisById,
   };
 };

@@ -1,11 +1,14 @@
 import { bedrock, BEDROCK_MODEL_ID, rekognition } from "../config/aws.js";
+import { S3Service } from "./s3Service.js";
 import fs from "fs";
+import path from "path";
 
 export class SentimentAnalyzer {
   constructor() {
     this.mockMode =
       process.env.NODE_ENV === "development" && !process.env.AWS_ACCESS_KEY_ID;
     this.rekognition = rekognition;
+    this.s3Service = new S3Service();
   }
 
   // This code analyze the image using prompt engineering but is going to be replaced by Amazon Rekognition service
@@ -83,8 +86,38 @@ export class SentimentAnalyzer {
   // }
 
   async analyzeFrame(framePath, timestamp) {
+    let imageUrl = null;
+
+    try {
+      // Extract video ID from frame path (e.g., ./temp/frames/video_id/frame_001.png)
+      const pathParts = framePath.split(path.sep);
+      const videoId = pathParts[pathParts.length - 2]; // Get video ID from directory name
+      const frameFilename = pathParts[pathParts.length - 1]; // Get frame filename
+
+      // Construct S3 key for the frame
+      const s3Key = `${videoId}/${frameFilename}`;
+
+      // Upload frame to S3
+      console.log(`📸 Uploading frame to S3: ${s3Key}`);
+      const uploadResult = await this.s3Service.uploadImage(framePath, s3Key);
+      imageUrl = uploadResult.url;
+
+      if (imageUrl) {
+        console.log(`✅ Frame uploaded successfully: ${imageUrl}`);
+      } else {
+        console.log(`⚠️ Frame upload skipped (S3 not configured)`);
+      }
+    } catch (error) {
+      console.error("❌ Error uploading frame to S3:", error);
+      // Continue with analysis even if upload fails
+    }
+
     if (this.mockMode) {
-      return this.getMockSentiment(timestamp);
+      const mockResult = this.getMockSentiment(timestamp);
+      return {
+        ...mockResult,
+        imageUrl,
+      };
     }
 
     try {
@@ -98,7 +131,7 @@ export class SentimentAnalyzer {
 
       // Use Rekognition to detect faces and emotions
       const data = await this.rekognition.detectFaces(params).promise();
-      console.log("Rekognition data:", data);
+      // console.log("Rekognition data:", data);
 
       const emotions = data.FaceDetails[0]?.Emotions || [];
 
@@ -108,6 +141,7 @@ export class SentimentAnalyzer {
           timestamp,
           sentiment: "neutral",
           confidence: 0.1,
+          imageUrl,
         };
       }
 
@@ -137,6 +171,7 @@ export class SentimentAnalyzer {
         timestamp,
         sentiment: mappedSentiment,
         confidence: parseFloat(normalizedConfidence.toFixed(2)),
+        imageUrl,
       };
     } catch (error) {
       console.error("Error analyzing frame with Rekognition:", error);
