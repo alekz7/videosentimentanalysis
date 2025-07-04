@@ -1,16 +1,28 @@
 import { execSync } from "child_process";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
-import ffprobeInstaller from "@ffprobe-installer/ffprobe";
+import ffmpeg from "fluent-ffmpeg";
+
+// try {
+//   const ffmpegPath = execSync("which ffmpeg").toString().trim();
+//   const ffprobePath = execSync("which ffprobe").toString().trim();
+
+//   ffmpeg.setFfmpegPath(ffmpegPath);
+//   ffmpeg.setFfprobePath(ffprobePath);
+//   console.log("FFMPEG ruta:", ffmpegPath);
+//   console.log("FFPROBE ruta:", ffprobePath);
+// } catch (err) {
+//   console.error("Couldn't found ffmpeg/ffprobe:", err);
+// }
+
+ffmpeg.setFfmpegPath(
+  "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffmpeg.exe"
+);
+ffmpeg.setFfprobePath(
+  "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffprobe.exe"
+);
+
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
-
-// Set FFmpeg paths from installers
-const ffmpegPath = ffmpegInstaller.path;
-const ffprobePath = ffprobeInstaller.path;
-
-console.log("FFMPEG path:", ffmpegPath);
-console.log("FFPROBE path:", ffprobePath);
 
 export class VideoProcessor {
   constructor() {
@@ -27,47 +39,47 @@ export class VideoProcessor {
 
   async getVideoMetadata(videoPath) {
     return new Promise((resolve, reject) => {
-      const cmd = `"${ffprobePath}" -v quiet -print_format json -show_format -show_streams "${videoPath}"`;
-
-      try {
-        const result = execSync(cmd, { encoding: "utf8" });
-        const metadata = JSON.parse(result);
+      ffmpeg.ffprobe(videoPath, (err, metadata) => {
+        if (err) {
+          reject(err);
+          return;
+        }
 
         const videoStream = metadata.streams.find(
           (stream) => stream.codec_type === "video"
         );
-
         resolve({
-          duration: parseFloat(metadata.format.duration),
+          duration: metadata.format.duration,
           width: videoStream?.width,
           height: videoStream?.height,
-          fps: this.parseFPS(videoStream?.r_frame_rate) || 30,
+          fps: eval(videoStream?.r_frame_rate) || 30,
         });
-      } catch (err) {
-        reject(err);
-      }
+      });
     });
-  }
-
-  parseFPS(fpsString) {
-    if (!fpsString) return null;
-    const parts = fpsString.split("/");
-    return parts.length === 2
-      ? parseFloat(parts[0]) / parseFloat(parts[1])
-      : parseFloat(fpsString);
   }
 
   async compressVideo(inputPath, outputPath, onProgress) {
     return new Promise((resolve, reject) => {
-      const cmd = `"${ffmpegPath}" -i "${inputPath}" -c:v libx264 -c:a aac -s 1280x720 -b:v 1000k -b:a 128k -f mp4 -y "${outputPath}"`;
+      const command = ffmpeg(inputPath)
+        .videoCodec("libx264")
+        .audioCodec("aac")
+        .size("1280x720")
+        .videoBitrate("1000k")
+        .audioBitrate("128k")
+        .format("mp4")
+        .on("progress", (progress) => {
+          if (onProgress) {
+            onProgress(Math.round(progress.percent || 0));
+          }
+        })
+        .on("end", () => {
+          resolve(outputPath);
+        })
+        .on("error", (err) => {
+          reject(err);
+        });
 
-      try {
-        // For progress tracking, you'd need to parse stderr output
-        execSync(cmd, { stdio: "inherit" });
-        resolve(outputPath);
-      } catch (err) {
-        reject(err);
-      }
+      command.save(outputPath);
     });
   }
 
@@ -79,23 +91,29 @@ export class VideoProcessor {
     }
 
     return new Promise((resolve, reject) => {
-      const outputPattern = path.join(framesOutputDir, "frame_%03d.png");
-      const cmd = `"${ffmpegPath}" -i "${videoPath}" -vf fps=1 "${outputPattern}" -y`;
+      const command = ffmpeg(videoPath)
+        .fps(1) // Extract 1 frame per second
+        .format("image2")
+        .on("progress", (progress) => {
+          if (onProgress) {
+            onProgress(Math.round(progress.percent || 0));
+          }
+        })
+        .on("end", () => {
+          // Get list of extracted frames
+          const frames = fs
+            .readdirSync(framesOutputDir)
+            .filter((file) => file.endsWith(".png"))
+            .sort()
+            .map((file) => path.join(framesOutputDir, file));
 
-      try {
-        execSync(cmd, { stdio: "inherit" });
+          resolve(frames);
+        })
+        .on("error", (err) => {
+          reject(err);
+        });
 
-        // Get list of extracted frames
-        const frames = fs
-          .readdirSync(framesOutputDir)
-          .filter((file) => file.endsWith(".png"))
-          .sort()
-          .map((file) => path.join(framesOutputDir, file));
-
-        resolve(frames);
-      } catch (err) {
-        reject(err);
-      }
+      command.save(path.join(framesOutputDir, "frame_%03d.png"));
     });
   }
 
