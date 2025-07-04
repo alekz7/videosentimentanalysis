@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  ReferenceArea,
   Area,
   AreaChart,
 } from "recharts";
@@ -304,22 +305,24 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             />
             <Tooltip content={<CustomTooltip />} />
 
-            {/* Manual annotation interval backgrounds */}
+            {/* Manual annotation interval backgrounds with ReferenceArea */}
             {annotationAreas.map((area, index) => (
-              <ReferenceLine
+              <ReferenceArea
                 key={`annotation-area-${index}`}
-                segment={[
-                  { x: area.start, y: 0 },
-                  { x: area.end, y: 1 },
-                ]}
+                x1={area.start}
+                x2={area.end}
+                fill={area.color}
+                fillOpacity={0.2}
                 stroke={area.color}
-                strokeWidth={8}
-                strokeOpacity={0.2}
+                strokeOpacity={0.6}
+                strokeWidth={1}
+                strokeDasharray="3 3"
                 label={{
                   value: area.label,
                   position: "top",
                   fill: area.color,
-                  fontSize: 10,
+                  fontSize: 12,
+                  fontWeight: "bold",
                 }}
               />
             ))}

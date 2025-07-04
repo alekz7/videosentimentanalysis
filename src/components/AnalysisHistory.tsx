@@ -144,6 +144,15 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({
     }
   };
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
     return sortOrder === "asc" ? <SortAsc size={14} /> : <SortDesc size={14} />;
@@ -353,6 +362,11 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({
                       <div className="flex items-center justify-between">
                         <span>Created:</span>
                         <span>{formatDate(item.createdAt)}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span>Created Time:</span>
+                        <span>{formatTime(item.createdAt)}</span>
                       </div>
 
                       <div className="flex items-center justify-between">

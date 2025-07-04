@@ -50,6 +50,14 @@ router.get("/:videoId", async (req, res) => {
   }
 });
 
+function timeToSeconds(timeStr) {
+  const parts = timeStr.split(":");
+  const hours = parseInt(parts[0]) || 0;
+  const minutes = parseInt(parts[1]) || 0;
+  const seconds = parseFloat(parts[2]) || 0;
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
 // Create a new manual annotation
 router.post("/:videoId", async (req, res) => {
   const { videoId } = req.params;
@@ -111,8 +119,12 @@ router.post("/:videoId", async (req, res) => {
           error: "Timestamp should not be provided for interval annotations",
         });
       }
+
+      // Then use it in your condition
+      const startSeconds = timeToSeconds(startTimestamp);
+      const endSeconds = timeToSeconds(endTimestamp);
       // Validate that start is before end
-      if (parseFloat(startTimestamp) >= parseFloat(endTimestamp)) {
+      if (startSeconds >= endSeconds) {
         return res.status(400).json({
           error: "Start timestamp must be before end timestamp",
         });
