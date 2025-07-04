@@ -14,8 +14,9 @@ import {
   Loader2,
   Clock,
 } from "lucide-react";
-import { VideoAnalysis, UploadProgress } from "../types";
+import { VideoAnalysis, UploadProgress, ManualAnnotation } from "../types";
 import { sentimentLabels, sentimentColors } from "../utils/mockData";
+import { useManualAnnotations } from "../hooks/useManualAnnotations";
 import VideoPlayer from "./VideoPlayer";
 import SentimentChart from "./SentimentChart";
 import HighlightedMoments from "./HighlightedMoments";
@@ -48,6 +49,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [liveProgress, setLiveProgress] = useState<UploadProgress | null>(
     processingProgress
   );
+
+  // Load manual annotations
+  const { annotations, fetchAnnotations } = useManualAnnotations(analysis.id);
+
+  // Fetch annotations when component mounts
+  useEffect(() => {
+    fetchAnnotations();
+  }, [fetchAnnotations]);
 
   // Poll for live progress when in processing mode
   useEffect(() => {
@@ -181,12 +190,23 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const exportData = () => {
-    const dataStr = JSON.stringify(analysis.sentiments, null, 2);
+    const exportData = {
+      video: {
+        id: analysis.id,
+        filename: analysis.filename,
+        duration: analysis.duration,
+        createdAt: analysis.createdAt,
+      },
+      sentiments: analysis.sentiments,
+      annotations: annotations,
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `sentiment-analysis-${analysis.filename}.json`;
+    link.download = `video-analysis-${analysis.filename}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -212,6 +232,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               <span className="text-primary-500 font-medium">
                 {analysis.filename}
               </span>
+              {annotations.length > 0 && (
+                <span className="ml-4 text-orange-400">
+                  • {annotations.length} manual annotation
+                  {annotations.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </p>
           </div>
 
@@ -317,6 +343,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onSeek={handleSeek}
                     sentiments={[]} // No sentiments during processing
                     selectedSentiment=""
+                    annotations={annotations}
                   />
                 </div>
 
@@ -514,6 +541,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onSeek={handleSeek}
                     sentiments={analysis.sentiments}
                     selectedSentiment={selectedSentiment}
+                    annotations={annotations}
                   />
                 </div>
 
@@ -573,7 +601,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <div>
                 <div className="mb-4">
                   <h2 className="text-xl font-semibold text-white mb-2">
-                    Multi-Sentiment Timeline
+                    Multi-Sentiment Timeline with Manual Annotations
                   </h2>
                   <p className="text-gray-400">
                     {selectedSentiment
@@ -581,8 +609,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                           sentimentLabels[
                             selectedSentiment as keyof typeof sentimentLabels
                           ]
-                        } timeline - click chart points to jump to that moment`
-                      : "All sentiment lines displayed simultaneously - click any point to jump to that moment in the video"}
+                        } timeline with manual annotations - click chart points to jump to that moment`
+                      : "All sentiment lines and manual annotations displayed - click any point to jump to that moment in the video"}
                   </p>
                 </div>
                 <SentimentChart
@@ -590,6 +618,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   currentTime={currentTime}
                   onTimeClick={handleChartClick}
                   selectedSentiment={selectedSentiment}
+                  annotations={annotations}
                 />
               </div>
 

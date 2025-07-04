@@ -8,6 +8,7 @@ import multer from "multer";
 // Import routes
 import uploadRoutes from "./routes/upload.js";
 import healthRoutes from "./routes/health.js";
+import annotationRoutes from "./routes/annotations.js";
 
 // Load environment variables
 dotenv.config();
@@ -18,11 +19,15 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const corsOrigins =
+  process.env.NODE_ENV === "production"
+    ? ["https://playful-manatee-e3dc81.netlify.app"]
+    : ["http://localhost:5173", "http://localhost:3000"];
+
 // Middleware
 app.use(
   cors({
-    // origin: ["http://localhost:5173", "http://localhost:3000"], // Allow Vite dev server
-    origin: ["https://playful-manatee-e3dc81.netlify.app"],
+    origin: corsOrigins,
     credentials: true,
   })
 );
@@ -32,6 +37,7 @@ app.use(express.urlencoded({ extended: true }));
 // API Routes
 app.use("/api/health", healthRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/annotations", annotationRoutes);
 
 // Error handling middleware
 app.use((error, req, res, next) => {
@@ -58,6 +64,9 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Upload endpoint: http://localhost:${PORT}/api/upload`);
+  console.log(
+    `📝 Annotations endpoint: http://localhost:${PORT}/api/annotations`
+  );
 
   if (!process.env.MY_APP_AWS_ACCESS_KEY_ID) {
     console.log(

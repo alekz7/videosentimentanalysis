@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, History, Upload } from 'lucide-react';
-import { useVideoAnalysis } from './hooks/useVideoAnalysis';
-import VideoUpload from './components/VideoUpload';
-import Dashboard from './components/Dashboard';
-import AnalysisHistory from './components/AnalysisHistory';
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, History, Upload, Edit3 } from "lucide-react";
+import { useVideoAnalysis } from "./hooks/useVideoAnalysis";
+import VideoUpload from "./components/VideoUpload";
+import Dashboard from "./components/Dashboard";
+import AnalysisHistory from "./components/AnalysisHistory";
+import VideoAnnotationPage from "./components/VideoAnnotationPage";
 
-type CurrentView = 'upload' | 'history' | 'dashboard';
+type CurrentView = "upload" | "history" | "dashboard" | "annotations";
 
 function App() {
   const {
@@ -24,22 +25,22 @@ function App() {
     loadAnalysisById,
   } = useVideoAnalysis();
 
-  const [currentView, setCurrentView] = useState<CurrentView>('upload');
+  const [currentView, setCurrentView] = useState<CurrentView>("upload");
 
   // Auto-switch to dashboard when analysis is available
   React.useEffect(() => {
-    if (analysis) {
-      setCurrentView('dashboard');
+    if (analysis && currentView !== "annotations") {
+      setCurrentView("dashboard");
     }
-  }, [analysis]);
+  }, [analysis, currentView]);
 
   const handleNewAnalysis = () => {
     reset();
-    setCurrentView('upload');
+    setCurrentView("upload");
   };
 
   const handleViewHistory = () => {
-    setCurrentView('history');
+    setCurrentView("history");
   };
 
   const handleLoadAnalysis = async (videoId: string) => {
@@ -47,13 +48,21 @@ function App() {
       await loadAnalysisById(videoId);
       // Analysis will be set and useEffect will switch to dashboard
     } catch (error) {
-      console.error('Failed to load analysis:', error);
+      console.error("Failed to load analysis:", error);
       // Could show an error toast here
     }
   };
 
+  const handleOpenAnnotations = () => {
+    setCurrentView("annotations");
+  };
+
+  const handleBackFromAnnotations = () => {
+    setCurrentView("dashboard");
+  };
+
   const renderNavigation = () => {
-    if (currentView === 'upload') {
+    if (currentView === "upload") {
       return (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -71,7 +80,7 @@ function App() {
       );
     }
 
-    if (currentView === 'history') {
+    if (currentView === "history") {
       return (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -79,7 +88,7 @@ function App() {
           className="absolute top-6 left-6 z-10"
         >
           <button
-            onClick={() => setCurrentView('upload')}
+            onClick={() => setCurrentView("upload")}
             className="flex items-center gap-2 px-4 py-2 bg-dark-800 hover:bg-dark-700 text-gray-300 rounded-lg border border-dark-600 transition-colors duration-200"
           >
             <ArrowLeft size={18} />
@@ -89,7 +98,7 @@ function App() {
       );
     }
 
-    if (currentView === 'dashboard') {
+    if (currentView === "dashboard") {
       return (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -103,7 +112,7 @@ function App() {
             <Upload size={18} />
             New Analysis
           </button>
-          
+
           <button
             onClick={handleViewHistory}
             className="flex items-center gap-2 px-4 py-2 bg-dark-800 hover:bg-dark-700 text-gray-300 rounded-lg border border-dark-600 transition-colors duration-200"
@@ -111,10 +120,21 @@ function App() {
             <History size={18} />
             History
           </button>
+
+          {analysis && (
+            <button
+              onClick={handleOpenAnnotations}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors duration-200"
+            >
+              <Edit3 size={18} />
+              Add Annotations
+            </button>
+          )}
         </motion.div>
       );
     }
 
+    // For annotations view, navigation is handled within the component
     return null;
   };
 
@@ -123,7 +143,7 @@ function App() {
       {renderNavigation()}
 
       <AnimatePresence mode="wait">
-        {currentView === 'upload' && (
+        {currentView === "upload" && (
           <motion.div
             key="upload"
             initial={{ opacity: 0 }}
@@ -139,7 +159,7 @@ function App() {
           </motion.div>
         )}
 
-        {currentView === 'history' && (
+        {currentView === "history" && (
           <motion.div
             key="history"
             initial={{ opacity: 0 }}
@@ -153,7 +173,7 @@ function App() {
           </motion.div>
         )}
 
-        {currentView === 'dashboard' && analysis && (
+        {currentView === "dashboard" && analysis && (
           <motion.div
             key="dashboard"
             initial={{ opacity: 0 }}
@@ -168,6 +188,20 @@ function App() {
               processingProgress={progress}
               videoId={currentVideoId || undefined}
               jobId={currentJobId || undefined}
+            />
+          </motion.div>
+        )}
+
+        {currentView === "annotations" && analysis && (
+          <motion.div
+            key="annotations"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <VideoAnnotationPage
+              analysis={analysis}
+              onBack={handleBackFromAnnotations}
             />
           </motion.div>
         )}

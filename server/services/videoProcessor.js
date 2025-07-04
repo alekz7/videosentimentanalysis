@@ -3,26 +3,31 @@ import ffmpeg from "fluent-ffmpeg";
 import tmp from "tmp";
 import fs from "fs";
 import path from "path";
-import { v4 as uuidv4 } from "uuid";
+import os from "os";
 
-try {
-  const ffmpegPath = execSync("which ffmpeg").toString().trim();
-  const ffprobePath = execSync("which ffprobe").toString().trim();
+if (os.platform() === "win32") {
+  const installation_path = process.env.FFMPEG_WINDOWS_PATH;
+  if (!installation_path) {
+    console.log("⚠️  Missing FFMPEG installation");
+  }
+  // Windows configuration
+  ffmpeg.setFfmpegPath(`${installation_path}ffmpeg.exe`);
+  ffmpeg.setFfprobePath(`${installation_path}ffprobe.exe`);
+  console.log("Using Windows FFmpeg paths");
+} else {
+  // Unix-like systems (Linux, macOS)
+  try {
+    const ffmpegPath = execSync("which ffmpeg").toString().trim();
+    const ffprobePath = execSync("which ffprobe").toString().trim();
 
-  ffmpeg.setFfmpegPath(ffmpegPath);
-  ffmpeg.setFfprobePath(ffprobePath);
-  console.log("FFMPEG ruta:", ffmpegPath);
-  console.log("FFPROBE ruta:", ffprobePath);
-} catch (err) {
-  console.error("Couldn't found ffmpeg/ffprobe:", err);
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffprobePath);
+    console.log("FFMPEG ruta:", ffmpegPath);
+    console.log("FFPROBE ruta:", ffprobePath);
+  } catch (err) {
+    console.error("Couldn't found ffmpeg/ffprobe:", err);
+  }
 }
-
-// ffmpeg.setFfmpegPath(
-//   "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffmpeg.exe"
-// );
-// ffmpeg.setFfprobePath(
-//   "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffprobe.exe"
-// );
 
 export class VideoProcessor {
   constructor() {
