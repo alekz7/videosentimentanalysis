@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  History, 
-  Play, 
-  Clock, 
-  FileVideo, 
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  History,
+  Play,
+  Clock,
+  FileVideo,
   Calendar,
   TrendingUp,
   Search,
@@ -13,9 +13,11 @@ import {
   SortDesc,
   Loader2,
   AlertCircle,
-  Eye
-} from 'lucide-react';
-import { formatDuration, formatFileSize } from '../utils/videoUtils';
+  Eye,
+} from "lucide-react";
+import { formatDuration, formatFileSize } from "../utils/videoUtils";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 interface AnalysisHistoryItem {
   id: string;
@@ -32,17 +34,22 @@ interface AnalysisHistoryProps {
   isLoading?: boolean;
 }
 
-type SortField = 'date' | 'filename' | 'duration' | 'sentiments';
-type SortOrder = 'asc' | 'desc';
+type SortField = "date" | "filename" | "duration" | "sentiments";
+type SortOrder = "asc" | "desc";
 
-const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoading = false }) => {
+const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({
+  onLoadAnalysis,
+  isLoading = false,
+}) => {
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
-  const [filteredHistory, setFilteredHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [filteredHistory, setFilteredHistory] = useState<AnalysisHistoryItem[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   useEffect(() => {
     fetchHistory();
@@ -50,28 +57,28 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
 
   useEffect(() => {
     // Filter and sort history
-    let filtered = history.filter(item =>
+    let filtered = history.filter((item) =>
       item.filename.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     // Sort
     filtered.sort((a, b) => {
       let aValue: any, bValue: any;
-      
+
       switch (sortField) {
-        case 'date':
+        case "date":
           aValue = new Date(a.createdAt).getTime();
           bValue = new Date(b.createdAt).getTime();
           break;
-        case 'filename':
+        case "filename":
           aValue = a.filename.toLowerCase();
           bValue = b.filename.toLowerCase();
           break;
-        case 'duration':
+        case "duration":
           aValue = a.duration;
           bValue = b.duration;
           break;
-        case 'sentiments':
+        case "sentiments":
           aValue = a.sentimentCount;
           bValue = b.sentimentCount;
           break;
@@ -80,7 +87,7 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
           bValue = b.createdAt;
       }
 
-      if (sortOrder === 'asc') {
+      if (sortOrder === "asc") {
         return aValue > bValue ? 1 : -1;
       } else {
         return aValue < bValue ? 1 : -1;
@@ -94,18 +101,18 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await fetch('http://localhost:3001/api/upload/history');
-      
+
+      const response = await fetch(`${API_BASE_URL}/upload/history`);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch analysis history');
+        throw new Error("Failed to fetch analysis history");
       }
-      
+
       const data = await response.json();
       setHistory(data.history || []);
     } catch (err) {
-      console.error('Error fetching history:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load history');
+      console.error("Error fetching history:", err);
+      setError(err instanceof Error ? err.message : "Failed to load history");
     } finally {
       setLoading(false);
     }
@@ -113,10 +120,10 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortOrder('desc');
+      setSortOrder("desc");
     }
   };
 
@@ -127,9 +134,9 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays === 1) {
-      return 'Today';
+      return "Today";
     } else if (diffDays === 2) {
-      return 'Yesterday';
+      return "Yesterday";
     } else if (diffDays <= 7) {
       return `${diffDays - 1} days ago`;
     } else {
@@ -139,7 +146,7 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
 
   const getSortIcon = (field: SortField) => {
     if (sortField !== field) return null;
-    return sortOrder === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />;
+    return sortOrder === "asc" ? <SortAsc size={14} /> : <SortDesc size={14} />;
   };
 
   if (loading) {
@@ -150,8 +157,13 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
           animate={{ opacity: 1 }}
           className="text-center"
         >
-          <Loader2 className="mx-auto mb-4 text-primary-500 animate-spin" size={48} />
-          <h2 className="text-xl font-semibold text-white mb-2">Loading Analysis History</h2>
+          <Loader2
+            className="mx-auto mb-4 text-primary-500 animate-spin"
+            size={48}
+          />
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Loading Analysis History
+          </h2>
           <p className="text-gray-400">Fetching your past video analyses...</p>
         </motion.div>
       </div>
@@ -167,7 +179,9 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
           className="text-center max-w-md"
         >
           <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-          <h2 className="text-xl font-semibold text-white mb-2">Error Loading History</h2>
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Error Loading History
+          </h2>
           <p className="text-gray-400 mb-4">{error}</p>
           <button
             onClick={fetchHistory}
@@ -194,9 +208,11 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
               <History className="text-primary-500" size={24} />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-white">Analysis History</h1>
+              <h1 className="text-3xl font-bold text-white">
+                Analysis History
+              </h1>
               <p className="text-gray-400">
-                {history.length} video{history.length !== 1 ? 's' : ''} analyzed
+                {history.length} video{history.length !== 1 ? "s" : ""} analyzed
               </p>
             </div>
           </div>
@@ -212,7 +228,10 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
           <div className="flex flex-col md:flex-row gap-4">
             {/* Search */}
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
               <input
                 type="text"
                 placeholder="Search by filename..."
@@ -225,55 +244,55 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
             {/* Sort Controls */}
             <div className="flex gap-2">
               <button
-                onClick={() => handleSort('date')}
+                onClick={() => handleSort("date")}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${
-                  sortField === 'date'
-                    ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                    : 'bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600'
+                  sortField === "date"
+                    ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                    : "bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600"
                 }`}
               >
                 <Calendar size={16} />
                 Date
-                {getSortIcon('date')}
+                {getSortIcon("date")}
               </button>
-              
+
               <button
-                onClick={() => handleSort('filename')}
+                onClick={() => handleSort("filename")}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${
-                  sortField === 'filename'
-                    ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                    : 'bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600'
+                  sortField === "filename"
+                    ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                    : "bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600"
                 }`}
               >
                 <FileVideo size={16} />
                 Name
-                {getSortIcon('filename')}
+                {getSortIcon("filename")}
               </button>
-              
+
               <button
-                onClick={() => handleSort('duration')}
+                onClick={() => handleSort("duration")}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${
-                  sortField === 'duration'
-                    ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                    : 'bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600'
+                  sortField === "duration"
+                    ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                    : "bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600"
                 }`}
               >
                 <Clock size={16} />
                 Duration
-                {getSortIcon('duration')}
+                {getSortIcon("duration")}
               </button>
-              
+
               <button
-                onClick={() => handleSort('sentiments')}
+                onClick={() => handleSort("sentiments")}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm ${
-                  sortField === 'sentiments'
-                    ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                    : 'bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600'
+                  sortField === "sentiments"
+                    ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                    : "bg-dark-700 text-gray-300 border border-dark-600 hover:bg-dark-600"
                 }`}
               >
                 <TrendingUp size={16} />
                 Data Points
-                {getSortIcon('sentiments')}
+                {getSortIcon("sentiments")}
               </button>
             </div>
           </div>
@@ -289,13 +308,12 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
             >
               <History className="mx-auto mb-4 text-gray-500" size={48} />
               <h3 className="text-lg font-semibold text-white mb-2">
-                {searchTerm ? 'No matching analyses found' : 'No analyses yet'}
+                {searchTerm ? "No matching analyses found" : "No analyses yet"}
               </h3>
               <p className="text-gray-400">
-                {searchTerm 
-                  ? 'Try adjusting your search terms'
-                  : 'Upload and analyze your first video to see it here'
-                }
+                {searchTerm
+                  ? "Try adjusting your search terms"
+                  : "Upload and analyze your first video to see it here"}
               </p>
             </motion.div>
           ) : (
@@ -330,18 +348,18 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
                     <h3 className="text-white font-medium mb-2 truncate group-hover:text-primary-400 transition-colors duration-200">
                       {item.filename}
                     </h3>
-                    
+
                     <div className="space-y-2 text-sm text-gray-400">
                       <div className="flex items-center justify-between">
                         <span>Created:</span>
                         <span>{formatDate(item.createdAt)}</span>
                       </div>
-                      
+
                       <div className="flex items-center justify-between">
                         <span>File size:</span>
                         <span>{formatFileSize(item.fileSize)}</span>
                       </div>
-                      
+
                       <div className="flex items-center justify-between">
                         <span>Sentiments:</span>
                         <span className="text-primary-400 font-medium">
@@ -385,9 +403,7 @@ const AnalysisHistory: React.FC<AnalysisHistoryProps> = ({ onLoadAnalysis, isLoa
           >
             Showing {filteredHistory.length} of {history.length} analyses
             {searchTerm && (
-              <span className="ml-2">
-                • Filtered by "{searchTerm}"
-              </span>
+              <span className="ml-2">• Filtered by "{searchTerm}"</span>
             )}
           </motion.div>
         )}

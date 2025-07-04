@@ -1,13 +1,28 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart3, Filter, Eye, Brain, Download, Share2, Target, Image, Wifi, WifiOff, Loader2, Clock } from 'lucide-react';
-import { VideoAnalysis, UploadProgress } from '../types';
-import { sentimentLabels, sentimentColors } from '../utils/mockData';
-import VideoPlayer from './VideoPlayer';
-import SentimentChart from './SentimentChart';
-import HighlightedMoments from './HighlightedMoments';
-import SentimentImageGallery from './SentimentImageGallery';
-import ProgressBar from './ProgressBar';
+import React, { useState, useMemo, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  BarChart3,
+  Filter,
+  Eye,
+  Brain,
+  Download,
+  Share2,
+  Target,
+  Image,
+  Wifi,
+  WifiOff,
+  Loader2,
+  Clock,
+} from "lucide-react";
+import { VideoAnalysis, UploadProgress } from "../types";
+import { sentimentLabels, sentimentColors } from "../utils/mockData";
+import VideoPlayer from "./VideoPlayer";
+import SentimentChart from "./SentimentChart";
+import HighlightedMoments from "./HighlightedMoments";
+import SentimentImageGallery from "./SentimentImageGallery";
+import ProgressBar from "./ProgressBar";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 interface DashboardProps {
   analysis: VideoAnalysis;
@@ -19,18 +34,20 @@ interface DashboardProps {
   jobId?: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ 
-  analysis, 
-  isMockMode, 
+const Dashboard: React.FC<DashboardProps> = ({
+  analysis,
+  isMockMode,
   onToggleMockMode,
   isProcessing = false,
   processingProgress = null,
   videoId,
-  jobId
+  jobId,
 }) => {
   const [currentTime, setCurrentTime] = useState(0);
-  const [selectedSentiment, setSelectedSentiment] = useState<string>('');
-  const [liveProgress, setLiveProgress] = useState<UploadProgress | null>(processingProgress);
+  const [selectedSentiment, setSelectedSentiment] = useState<string>("");
+  const [liveProgress, setLiveProgress] = useState<UploadProgress | null>(
+    processingProgress
+  );
 
   // Poll for live progress when in processing mode
   useEffect(() => {
@@ -41,54 +58,56 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const pollProgress = async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/upload/${videoId}/status/${jobId}`);
+        const response = await fetch(
+          `${API_BASE_URL}/upload/${videoId}/status/${jobId}`
+        );
         if (response.ok) {
           const data = await response.json();
-          
+
           if (data.error) {
             setLiveProgress({
               percentage: 0,
-              stage: 'uploading',
-              message: `Error: ${data.error}`
+              stage: "uploading",
+              message: `Error: ${data.error}`,
             });
             return;
           }
 
           // Map server status to progress stages
-          let stage: UploadProgress['stage'] = 'analyzing';
-          let message = 'Processing video...';
+          let stage: UploadProgress["stage"] = "analyzing";
+          let message = "Processing video...";
 
           if (data.progress <= 30) {
-            stage = 'compressing';
-            message = 'Compressing video...';
+            stage = "compressing";
+            message = "Compressing video...";
           } else if (data.progress <= 70) {
-            stage = 'analyzing';
-            message = 'Analyzing sentiment...';
+            stage = "analyzing";
+            message = "Analyzing sentiment...";
           } else if (data.progress < 100) {
-            stage = 'analyzing';
-            message = 'Finalizing analysis...';
+            stage = "analyzing";
+            message = "Finalizing analysis...";
           } else {
-            stage = 'completed';
-            message = 'Analysis complete!';
+            stage = "completed";
+            message = "Analysis complete!";
           }
 
           setLiveProgress({
             percentage: data.progress || 0,
             stage,
-            message
+            message,
           });
 
           // Stop polling when completed or failed
-          if (data.status === 'completed' || data.status === 'failed') {
+          if (data.status === "completed" || data.status === "failed") {
             return;
           }
         }
       } catch (error) {
-        console.error('Error polling progress:', error);
+        console.error("Error polling progress:", error);
         setLiveProgress({
           percentage: 0,
-          stage: 'uploading',
-          message: 'Error checking progress'
+          stage: "uploading",
+          message: "Error checking progress",
         });
       }
     };
@@ -103,11 +122,24 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [isProcessing, videoId, jobId, isMockMode]);
 
   const sentimentStats = useMemo(() => {
-    const stats: Record<string, { count: number; percentage: number; avgConfidence: number; totalConfidence: number }> = {};
-    
-    analysis.sentiments.forEach(item => {
+    const stats: Record<
+      string,
+      {
+        count: number;
+        percentage: number;
+        avgConfidence: number;
+        totalConfidence: number;
+      }
+    > = {};
+
+    analysis.sentiments.forEach((item) => {
       if (!stats[item.sentiment]) {
-        stats[item.sentiment] = { count: 0, percentage: 0, avgConfidence: 0, totalConfidence: 0 };
+        stats[item.sentiment] = {
+          count: 0,
+          percentage: 0,
+          avgConfidence: 0,
+          totalConfidence: 0,
+        };
       }
       stats[item.sentiment].count++;
       stats[item.sentiment].totalConfidence += item.confidence;
@@ -115,19 +147,24 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
 
     // Calculate total confidence across all sentiments for percentage calculation
-    const totalConfidence = Object.values(stats).reduce((sum, stat) => sum + stat.totalConfidence, 0);
+    const totalConfidence = Object.values(stats).reduce(
+      (sum, stat) => sum + stat.totalConfidence,
+      0
+    );
 
-    Object.keys(stats).forEach(sentiment => {
-      stats[sentiment].percentage = (stats[sentiment].totalConfidence / totalConfidence) * 100;
-      stats[sentiment].avgConfidence = stats[sentiment].avgConfidence / stats[sentiment].count;
+    Object.keys(stats).forEach((sentiment) => {
+      stats[sentiment].percentage =
+        (stats[sentiment].totalConfidence / totalConfidence) * 100;
+      stats[sentiment].avgConfidence =
+        stats[sentiment].avgConfidence / stats[sentiment].count;
     });
 
     return stats;
   }, [analysis.sentiments]);
 
   const filteredMoments = useMemo(() => {
-    return analysis.sentiments.filter(moment => 
-      !selectedSentiment || moment.sentiment === selectedSentiment
+    return analysis.sentiments.filter(
+      (moment) => !selectedSentiment || moment.sentiment === selectedSentiment
     );
   }, [analysis.sentiments, selectedSentiment]);
 
@@ -145,9 +182,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const exportData = () => {
     const dataStr = JSON.stringify(analysis.sentiments, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
     const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
     link.download = `sentiment-analysis-${analysis.filename}.json`;
     link.click();
@@ -171,42 +208,45 @@ const Dashboard: React.FC<DashboardProps> = ({
               Sentiment Analysis Dashboard
             </h1>
             <p className="text-gray-400">
-              Analyzing: <span className="text-primary-500 font-medium">{analysis.filename}</span>
+              Analyzing:{" "}
+              <span className="text-primary-500 font-medium">
+                {analysis.filename}
+              </span>
             </p>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <button
               onClick={onToggleMockMode}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
-                isMockMode 
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
-                  : 'bg-green-500/20 text-green-400 border border-green-500/30'
+                isMockMode
+                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                  : "bg-green-500/20 text-green-400 border border-green-500/30"
               }`}
             >
               {isMockMode ? <WifiOff size={18} /> : <Wifi size={18} />}
-              {isMockMode ? 'Demo Mode' : 'Live Analysis'}
+              {isMockMode ? "Demo Mode" : "Live Analysis"}
             </button>
-            
+
             <button
               onClick={exportData}
               disabled={showProcessing}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors duration-200 ${
                 showProcessing
-                  ? 'bg-dark-700 text-gray-500 border-dark-600 cursor-not-allowed'
-                  : 'bg-dark-700 hover:bg-dark-600 text-gray-300 border-dark-600'
+                  ? "bg-dark-700 text-gray-500 border-dark-600 cursor-not-allowed"
+                  : "bg-dark-700 hover:bg-dark-600 text-gray-300 border-dark-600"
               }`}
             >
               <Download size={18} />
               Export Data
             </button>
-            
-            <button 
+
+            <button
               disabled={showProcessing}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors duration-200 ${
                 showProcessing
-                  ? 'bg-primary-500/50 text-white/50 cursor-not-allowed'
-                  : 'bg-primary-500 hover:bg-primary-600 text-white'
+                  ? "bg-primary-500/50 text-white/50 cursor-not-allowed"
+                  : "bg-primary-500 hover:bg-primary-600 text-white"
               }`}
             >
               <Share2 size={18} />
@@ -225,7 +265,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex items-center gap-2 text-amber-400">
               <WifiOff size={16} />
               <span className="text-sm font-medium">
-                Demo Mode Active - Using simulated data for demonstration purposes
+                Demo Mode Active - Using simulated data for demonstration
+                purposes
               </span>
             </div>
           </motion.div>
@@ -240,9 +281,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           >
             <div className="flex items-center gap-3 text-blue-400 mb-3">
               <Loader2 size={20} className="animate-spin" />
-              <span className="font-medium">
-                Live Analysis in Progress
-              </span>
+              <span className="font-medium">Live Analysis in Progress</span>
             </div>
             <ProgressBar progress={liveProgress!} />
           </motion.div>
@@ -267,7 +306,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                       Video Preview
                     </h2>
                     <p className="text-gray-400">
-                      Analysis results will appear here once processing is complete
+                      Analysis results will appear here once processing is
+                      complete
                     </p>
                   </div>
                   <VideoPlayer
@@ -287,21 +327,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <Clock className="text-primary-500" size={20} />
                       Processing Status
                     </h3>
-                    
+
                     <div className="space-y-4">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-400">Stage:</span>
-                        <span className="text-white capitalize">{liveProgress?.stage}</span>
+                        <span className="text-white capitalize">
+                          {liveProgress?.stage}
+                        </span>
                       </div>
-                      
+
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-400">Progress:</span>
-                        <span className="text-primary-400 font-medium">{liveProgress?.percentage}%</span>
+                        <span className="text-primary-400 font-medium">
+                          {liveProgress?.percentage}%
+                        </span>
                       </div>
-                      
+
                       <div className="pt-4 border-t border-dark-600">
                         <p className="text-xs text-gray-500">
-                          This may take a few minutes depending on video length and complexity.
+                          This may take a few minutes depending on video length
+                          and complexity.
                         </p>
                       </div>
                     </div>
@@ -311,29 +356,39 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <h3 className="text-lg font-semibold text-white mb-4">
                       What's Happening?
                     </h3>
-                    
+
                     <div className="space-y-3 text-sm">
                       <div className="flex items-start gap-3">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
                         <div>
-                          <p className="text-white font-medium">Video Compression</p>
-                          <p className="text-gray-400">Optimizing video for analysis</p>
+                          <p className="text-white font-medium">
+                            Video Compression
+                          </p>
+                          <p className="text-gray-400">
+                            Optimizing video for analysis
+                          </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-start gap-3">
                         <div className="w-2 h-2 bg-yellow-500 rounded-full mt-2 flex-shrink-0"></div>
                         <div>
-                          <p className="text-white font-medium">Frame Extraction</p>
-                          <p className="text-gray-400">Capturing frames for analysis</p>
+                          <p className="text-white font-medium">
+                            Frame Extraction
+                          </p>
+                          <p className="text-gray-400">
+                            Capturing frames for analysis
+                          </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-start gap-3">
                         <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
                         <div>
                           <p className="text-white font-medium">AI Analysis</p>
-                          <p className="text-gray-400">Detecting emotions and sentiments</p>
+                          <p className="text-gray-400">
+                            Detecting emotions and sentiments
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -343,12 +398,24 @@ const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Placeholder sections */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {['Sentiment Timeline', 'Highlighted Moments', 'Video Screenshots'].map((title, index) => (
-                  <div key={title} className="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center">
+                {[
+                  "Sentiment Timeline",
+                  "Highlighted Moments",
+                  "Video Screenshots",
+                ].map((title, index) => (
+                  <div
+                    key={title}
+                    className="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center"
+                  >
                     <div className="w-12 h-12 bg-dark-700 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <Loader2 className="text-gray-500 animate-spin" size={24} />
+                      <Loader2
+                        className="text-gray-500 animate-spin"
+                        size={24}
+                      />
                     </div>
-                    <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      {title}
+                    </h3>
                     <p className="text-gray-400 text-sm">
                       Available after analysis completes
                     </p>
@@ -373,19 +440,32 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div
                       key={sentiment}
                       className={`bg-dark-800 border rounded-xl p-4 cursor-pointer transition-all duration-200 hover:scale-105 ${
-                        selectedSentiment === sentiment 
-                          ? 'border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/20' 
-                          : 'border-dark-600 hover:border-dark-500'
+                        selectedSentiment === sentiment
+                          ? "border-primary-500 bg-primary-500/10 shadow-lg shadow-primary-500/20"
+                          : "border-dark-600 hover:border-dark-500"
                       }`}
-                      onClick={() => setSelectedSentiment(selectedSentiment === sentiment ? '' : sentiment)}
+                      onClick={() =>
+                        setSelectedSentiment(
+                          selectedSentiment === sentiment ? "" : sentiment
+                        )
+                      }
                     >
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-white font-medium text-sm">
-                          {sentimentLabels[sentiment as keyof typeof sentimentLabels]}
+                          {
+                            sentimentLabels[
+                              sentiment as keyof typeof sentimentLabels
+                            ]
+                          }
                         </h3>
-                        <div 
+                        <div
                           className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: sentimentColors[sentiment as keyof typeof sentimentColors] }}
+                          style={{
+                            backgroundColor:
+                              sentimentColors[
+                                sentiment as keyof typeof sentimentColors
+                              ],
+                          }}
                         />
                       </div>
                       <div className="space-y-1">
@@ -416,7 +496,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                       Video Analysis
                       {selectedSentiment && (
                         <span className="text-sm text-gray-400 ml-2">
-                          • Showing {sentimentLabels[selectedSentiment as keyof typeof sentimentLabels]} markers
+                          • Showing{" "}
+                          {
+                            sentimentLabels[
+                              selectedSentiment as keyof typeof sentimentLabels
+                            ]
+                          }{" "}
+                          markers
                         </span>
                       )}
                     </h2>
@@ -440,30 +526,39 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </h3>
                     <div className="space-y-2">
                       <button
-                        onClick={() => setSelectedSentiment('')}
+                        onClick={() => setSelectedSentiment("")}
                         className={`w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 ${
-                          !selectedSentiment 
-                            ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' 
-                            : 'text-gray-300 hover:bg-dark-700'
+                          !selectedSentiment
+                            ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                            : "text-gray-300 hover:bg-dark-700"
                         }`}
                       >
                         All Sentiments
                       </button>
-                      {Object.keys(sentimentStats).map(sentiment => (
+                      {Object.keys(sentimentStats).map((sentiment) => (
                         <button
                           key={sentiment}
                           onClick={() => setSelectedSentiment(sentiment)}
                           className={`w-full text-left px-3 py-2 rounded-lg transition-colors duration-200 flex items-center gap-2 ${
                             selectedSentiment === sentiment
-                              ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                              : 'text-gray-300 hover:bg-dark-700'
+                              ? "bg-primary-500/20 text-primary-400 border border-primary-500/30"
+                              : "text-gray-300 hover:bg-dark-700"
                           }`}
                         >
-                          <div 
+                          <div
                             className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: sentimentColors[sentiment as keyof typeof sentimentColors] }}
+                            style={{
+                              backgroundColor:
+                                sentimentColors[
+                                  sentiment as keyof typeof sentimentColors
+                                ],
+                            }}
                           />
-                          {sentimentLabels[sentiment as keyof typeof sentimentLabels]}
+                          {
+                            sentimentLabels[
+                              sentiment as keyof typeof sentimentLabels
+                            ]
+                          }
                           <span className="ml-auto text-sm">
                             {sentimentStats[sentiment].count}
                           </span>
@@ -481,10 +576,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                     Multi-Sentiment Timeline
                   </h2>
                   <p className="text-gray-400">
-                    {selectedSentiment 
-                      ? `Showing ${sentimentLabels[selectedSentiment as keyof typeof sentimentLabels]} timeline - click chart points to jump to that moment`
-                      : 'All sentiment lines displayed simultaneously - click any point to jump to that moment in the video'
-                    }
+                    {selectedSentiment
+                      ? `Showing ${
+                          sentimentLabels[
+                            selectedSentiment as keyof typeof sentimentLabels
+                          ]
+                        } timeline - click chart points to jump to that moment`
+                      : "All sentiment lines displayed simultaneously - click any point to jump to that moment in the video"}
                   </p>
                 </div>
                 <SentimentChart
@@ -503,10 +601,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                     Highlighted Moments
                   </h2>
                   <p className="text-gray-400">
-                    {selectedSentiment 
-                      ? `Jump to specific ${sentimentLabels[selectedSentiment as keyof typeof sentimentLabels].toLowerCase()} moments in the video`
-                      : 'Select a sentiment above to see specific moments you can jump to'
-                    }
+                    {selectedSentiment
+                      ? `Jump to specific ${sentimentLabels[
+                          selectedSentiment as keyof typeof sentimentLabels
+                        ].toLowerCase()} moments in the video`
+                      : "Select a sentiment above to see specific moments you can jump to"}
                   </p>
                 </div>
                 <HighlightedMoments
@@ -525,10 +624,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                     Video Screenshots
                   </h2>
                   <p className="text-gray-400">
-                    {selectedSentiment 
-                      ? `Screenshots from ${sentimentLabels[selectedSentiment as keyof typeof sentimentLabels].toLowerCase()} moments - click to jump to that time`
-                      : 'Visual gallery of analyzed moments - select a sentiment to filter screenshots'
-                    }
+                    {selectedSentiment
+                      ? `Screenshots from ${sentimentLabels[
+                          selectedSentiment as keyof typeof sentimentLabels
+                        ].toLowerCase()} moments - click to jump to that time`
+                      : "Visual gallery of analyzed moments - select a sentiment to filter screenshots"}
                   </p>
                 </div>
                 <SentimentImageGallery
