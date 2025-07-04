@@ -1,8 +1,6 @@
 import express from "express";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
-import path from "path";
-import fs from "fs";
 import database from "../config/database.js";
 import { VideoProcessor } from "../services/videoProcessor.js";
 import { SentimentAnalyzer } from "../services/sentimentAnalyzer.js";
@@ -13,25 +11,9 @@ const videoProcessor = new VideoProcessor();
 const sentimentAnalyzer = new SentimentAnalyzer();
 const s3Service = new S3Service();
 
-// Ensure upload directory exists
-const uploadDir = process.env.UPLOAD_DIR || "./uploads";
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
-
+// Configure multer for in-memory file uploads
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: parseInt(process.env.MAX_FILE_SIZE) || 104857600, // 100MB
   },
@@ -48,18 +30,6 @@ const upload = multer({
     }
   },
 });
-
-// Helper function to safely delete files
-const safeDeleteFile = (filePath) => {
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`🗑️ Deleted temporary file: ${filePath}`);
-    }
-  } catch (error) {
-    console.error(`⚠️ Failed to delete file ${filePath}:`, error.message);
-  }
-};
 
 // Get analysis history endpoint
 router.get("/history", async (req, res) => {
@@ -88,7 +58,6 @@ router.get("/history", async (req, res) => {
             file_size: 1,
             created_at: 1,
             s3_url: 1,
-            filename: 1,
             sentimentCount: { $size: "$sentiments" },
           },
         },
@@ -107,7 +76,7 @@ router.get("/history", async (req, res) => {
       fileSize: video.file_size,
       sentimentCount: video.sentimentCount,
       createdAt: video.created_at,
-      thumbnailUrl: video.s3_url || `/uploads/${video.filename}`, // Use video URL as thumbnail for now
+      thumbnailUrl: video.s3_url, // Use video URL as thumbnail for now
     }));
 
     res.json({
@@ -128,44 +97,46 @@ router.post("/", upload.single("video"), async (req, res) => {
     }
 
     const videoId = uuidv4();
-    const filePath = req.file.path;
+    const videoBuffer = req.file.buffer;
 
     console.log(`📹 Processing upload for video: ${req.file.originalname}`);
-    console.log(`📁 File saved to: ${filePath}`);
+    console.log(`💾 File loaded into memory: ${videoBuffer.length} bytes`);
     console.log(`🆔 Video ID: ${videoId}`);
 
-    // Get video metadata
-    const metadata = await videoProcessor.getVideoMetadata(filePath);
+    // Get video metadata from buffer
+    const metadata = await videoProcessor.getVideoMetadata(videoBuffer);
     console.log(`⏱️ Video duration: ${metadata.duration} seconds`);
 
     // Check video duration (max 2 minutes)
     if (metadata.duration > 120) {
-      safeDeleteFile(filePath); // Clean up uploaded file
       return res
         .status(400)
         .json({ error: "Video duration must be less than 2 minutes" });
     }
 
+    // Upload original video to S3 immediately
+    console.log(`☁️ Uploading original video to S3...`);
+    const originalUploadResult = await s3Service.uploadVideo(
+      videoBuffer,
+      `${videoId}_original.mp4`
+    );
+
     // Save video record to MongoDB
     const videoDoc = {
       _id: videoId,
-      filename: req.file.filename,
+      filename: `${videoId}.mp4`,
       original_filename: req.file.originalname,
       file_size: req.file.size,
       duration: metadata.duration,
-      local_path: filePath,
       status: "uploaded",
-      s3_url: null,
+      s3_url: originalUploadResult.url,
+      s3_key: originalUploadResult.key,
       created_at: new Date(),
       updated_at: new Date(),
     };
 
     await database.videos.insertOne(videoDoc);
     console.log(`✅ Video record saved to MongoDB`);
-
-    // Clean up the original uploaded file immediately after saving metadata
-    // The file will be processed from the compressed version
-    safeDeleteFile(filePath);
 
     res.json({
       success: true,
@@ -176,12 +147,6 @@ router.post("/", upload.single("video"), async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Upload error:", error);
-
-    // Clean up uploaded file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      safeDeleteFile(req.file.path);
-    }
-
     res.status(500).json({ error: "Upload failed: " + error.message });
   }
 });
@@ -268,7 +233,7 @@ router.get("/:videoId/results", async (req, res) => {
       .sort({ timestamp: 1 })
       .toArray();
 
-    const videoUrl = video.s3_url || `/uploads/${video.filename}`;
+    const videoUrl = video.s3_url;
 
     console.log(`📊 Returning results for video: ${video.original_filename}`);
     console.log(`📈 Sentiment data points: ${sentiments?.length || 0}`);
@@ -283,7 +248,7 @@ router.get("/:videoId/results", async (req, res) => {
           timestamp: s.timestamp,
           sentiment: s.sentiment,
           confidence: s.confidence,
-          imageUrl: s.imageUrl || null, // Include image URL for screenshots
+          imageUrl: s.imageUrl || null,
         })) || [],
       status: "completed",
       createdAt: video.created_at,
@@ -296,9 +261,6 @@ router.get("/:videoId/results", async (req, res) => {
 
 // Background processing function
 async function processVideoAsync(videoId, jobId) {
-  let compressedPath = null;
-  let extractedFrames = [];
-
   try {
     console.log(`🔄 Starting background processing for video: ${videoId}`);
 
@@ -341,100 +303,81 @@ async function processVideoAsync(videoId, jobId) {
 
     console.log(`📹 Processing video: ${video.original_filename}`);
 
-    await updateJobStatus("compressing", 10);
+    await updateJobStatus("processing", 10);
+
+    // Download original video from S3
+    console.log(`📥 Downloading original video from S3...`);
+    const originalVideoBuffer = await s3Service.downloadVideo(video.s3_key);
+    console.log(`✅ Original video downloaded: ${originalVideoBuffer.length} bytes`);
+
+    await updateJobStatus("compressing", 20);
 
     // Compress video
-    const compressedDir = "./temp/compressed";
-    if (!fs.existsSync(compressedDir)) {
-      fs.mkdirSync(compressedDir, { recursive: true });
-    }
-
-    compressedPath = path.join(compressedDir, `${videoId}.mp4`);
-    console.log(`🗜️ Compressing video to: ${compressedPath}`);
-
-    await videoProcessor.compressVideo(
-      video.local_path,
-      compressedPath,
+    console.log(`🗜️ Compressing video...`);
+    const compressedVideoBuffer = await videoProcessor.compressVideo(
+      originalVideoBuffer,
       async (progress) => {
-        await updateJobStatus("compressing", 10 + progress * 0.2);
+        await updateJobStatus("compressing", 20 + progress * 0.2);
       }
     );
+    console.log(`✅ Video compressed: ${compressedVideoBuffer.length} bytes`);
 
-    await updateJobStatus("uploading", 30);
+    await updateJobStatus("uploading", 40);
 
-    // Upload to S3
-    console.log(`☁️ Uploading to S3...`);
-    const uploadResult = await s3Service.uploadVideo(
-      compressedPath,
+    // Upload compressed video to S3
+    console.log(`☁️ Uploading compressed video to S3...`);
+    const compressedUploadResult = await s3Service.uploadVideo(
+      compressedVideoBuffer,
       `${videoId}.mp4`
     );
-    console.log(`✅ Upload result:`, uploadResult);
+    console.log(`✅ Compressed video uploaded: ${compressedUploadResult.url}`);
 
-    // Clean up compressed file after upload
-    safeDeleteFile(compressedPath);
-    compressedPath = null; // Mark as cleaned up
-
-    // Update video record with S3 URL
+    // Update video record with compressed S3 URL
     await database.videos.updateOne(
       { _id: videoId },
       {
         $set: {
-          s3_url: uploadResult.url,
+          s3_url: compressedUploadResult.url,
+          s3_key: compressedUploadResult.key,
           status: "processed",
           updated_at: new Date(),
         },
       }
     );
-    console.log(`✅ Video record updated with S3 URL`);
+    console.log(`✅ Video record updated with compressed S3 URL`);
 
-    await updateJobStatus("analyzing", 40);
+    await updateJobStatus("analyzing", 50);
 
-    // Extract frames (use the compressed file path for extraction)
+    // Extract frames
     console.log(`🎞️ Extracting frames...`);
-
-    // Re-create compressed file temporarily for frame extraction if needed
-    const tempCompressedPath = path.join(compressedDir, `${videoId}_temp.mp4`);
-    await videoProcessor.compressVideo(
-      video.local_path,
-      tempCompressedPath,
-      async (progress) => {
-        // Silent progress for temp file creation
-      }
-    );
-
-    extractedFrames = await videoProcessor.extractFrames(
-      tempCompressedPath,
+    const frameData = await videoProcessor.extractFrames(
+      compressedVideoBuffer,
       videoId,
       async (progress) => {
-        await updateJobStatus("analyzing", 40 + progress * 0.3);
+        await updateJobStatus("analyzing", 50 + progress * 0.2);
       }
     );
-
-    // Clean up temporary compressed file
-    safeDeleteFile(tempCompressedPath);
-
-    console.log(`📸 Extracted ${extractedFrames.length} frames`);
+    console.log(`📸 Extracted ${frameData.length} frames`);
 
     await updateJobStatus("analyzing", 70);
+
+    // Add videoId to frame data for S3 upload
+    const frameDataWithVideoId = frameData.map(frame => ({
+      ...frame,
+      videoId
+    }));
 
     // Analyze sentiment
     console.log(`🧠 Analyzing sentiment...`);
     const sentimentResults = await sentimentAnalyzer.analyzeBatch(
-      extractedFrames,
+      frameDataWithVideoId,
       async (progress) => {
         await updateJobStatus("analyzing", 70 + progress * 0.25);
       }
     );
     console.log(`📊 Generated ${sentimentResults.length} sentiment results`);
 
-    // Clean up frame files after analysis
-    console.log(`🧹 Cleaning up frame files...`);
-    extractedFrames.forEach((framePath) => {
-      safeDeleteFile(framePath);
-    });
-    extractedFrames = []; // Mark as cleaned up
-
-    // Save sentiment results to MongoDB with image URLs
+    // Save sentiment results to MongoDB
     console.log(`💾 Saving sentiment results to MongoDB...`);
     if (sentimentResults.length > 0) {
       const sentimentDocs = sentimentResults.map((result) => ({
@@ -442,8 +385,7 @@ async function processVideoAsync(videoId, jobId) {
         timestamp: result.timestamp,
         sentiment: result.sentiment,
         confidence: result.confidence,
-        imageUrl: result.imageUrl || null, // Save the S3 image URL
-        frame_path: null,
+        imageUrl: result.imageUrl || null,
         created_at: new Date(),
       }));
 
@@ -463,14 +405,6 @@ async function processVideoAsync(videoId, jobId) {
     console.error("❌ Processing error:", error);
 
     // Cleanup on error
-    if (compressedPath) {
-      safeDeleteFile(compressedPath);
-    }
-
-    extractedFrames.forEach((framePath) => {
-      safeDeleteFile(framePath);
-    });
-
     await videoProcessor.cleanup(videoId);
 
     // Update job with error

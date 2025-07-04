@@ -1,5 +1,9 @@
 import { execSync } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
+import tmp from "tmp";
+import fs from "fs";
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
 
 try {
   const ffmpegPath = execSync("which ffmpeg").toString().trim();
@@ -20,107 +24,265 @@ try {
 //   "C:\\code\\bolt\\videosentimentanalysis\\node_modules_ffmpeg\\bin\\ffprobe.exe"
 // );
 
-import path from "path";
-import fs from "fs";
-import { v4 as uuidv4 } from "uuid";
-
 export class VideoProcessor {
   constructor() {
-    this.framesDir = "./temp/frames";
-    this.compressedDir = "./temp/compressed";
-
-    // Ensure directories exist
-    [this.framesDir, this.compressedDir].forEach((dir) => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-    });
+    // Configure tmp to clean up automatically
+    tmp.setGracefulCleanup();
   }
 
-  async getVideoMetadata(videoPath) {
+  // Helper function to create a temporary file from buffer
+  createTempFile(buffer, suffix = ".mp4") {
     return new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      tmp.file({ suffix, keep: false }, (err, path, fd, cleanupCallback) => {
         if (err) {
           reject(err);
           return;
         }
 
-        const videoStream = metadata.streams.find(
-          (stream) => stream.codec_type === "video"
-        );
-        resolve({
-          duration: metadata.format.duration,
-          width: videoStream?.width,
-          height: videoStream?.height,
-          fps: eval(videoStream?.r_frame_rate) || 30,
+        fs.writeFile(path, buffer, (writeErr) => {
+          if (writeErr) {
+            cleanupCallback();
+            reject(writeErr);
+            return;
+          }
+
+          resolve({ path, cleanup: cleanupCallback });
         });
       });
     });
   }
 
-  async compressVideo(inputPath, outputPath, onProgress) {
+  // Helper function to create a temporary directory
+  createTempDir() {
     return new Promise((resolve, reject) => {
-      const command = ffmpeg(inputPath)
-        .videoCodec("libx264")
-        .audioCodec("aac")
-        .size("1280x720")
-        .videoBitrate("1000k")
-        .audioBitrate("128k")
-        .format("mp4")
-        .on("progress", (progress) => {
-          if (onProgress) {
-            onProgress(Math.round(progress.percent || 0));
-          }
-        })
-        .on("end", () => {
-          resolve(outputPath);
-        })
-        .on("error", (err) => {
+      tmp.dir({ unsafeCleanup: true }, (err, path, cleanupCallback) => {
+        if (err) {
           reject(err);
-        });
-
-      command.save(outputPath);
+          return;
+        }
+        resolve({ path, cleanup: cleanupCallback });
+      });
     });
   }
 
-  async extractFrames(videoPath, videoId, onProgress) {
-    const framesOutputDir = path.join(this.framesDir, videoId);
-
-    if (!fs.existsSync(framesOutputDir)) {
-      fs.mkdirSync(framesOutputDir, { recursive: true });
-    }
-
+  // Helper function to read file into buffer
+  readFileToBuffer(filePath) {
     return new Promise((resolve, reject) => {
-      const command = ffmpeg(videoPath)
-        .fps(1) // Extract 1 frame per second
-        .format("image2")
-        .on("progress", (progress) => {
-          if (onProgress) {
-            onProgress(Math.round(progress.percent || 0));
-          }
-        })
-        .on("end", () => {
-          // Get list of extracted frames
-          const frames = fs
-            .readdirSync(framesOutputDir)
-            .filter((file) => file.endsWith(".png"))
-            .sort()
-            .map((file) => path.join(framesOutputDir, file));
-
-          resolve(frames);
-        })
-        .on("error", (err) => {
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
           reject(err);
-        });
-
-      command.save(path.join(framesOutputDir, "frame_%03d.png"));
+          return;
+        }
+        resolve(data);
+      });
     });
+  }
+
+  async getVideoMetadata(videoBuffer) {
+    let tempFile = null;
+
+    try {
+      // Create temporary file from buffer
+      tempFile = await this.createTempFile(videoBuffer);
+
+      return new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(tempFile.path, (err, metadata) => {
+          // Clean up temporary file AFTER ffprobe completes
+          if (tempFile) {
+            tempFile.cleanup();
+          }
+
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          const videoStream = metadata.streams.find(
+            (stream) => stream.codec_type === "video"
+          );
+          resolve({
+            duration: metadata.format.duration,
+            width: videoStream?.width,
+            height: videoStream?.height,
+            fps: eval(videoStream?.r_frame_rate) || 30,
+          });
+        });
+      });
+    } catch (error) {
+      // Clean up on error during temp file creation
+      if (tempFile) {
+        tempFile.cleanup();
+      }
+      throw error;
+    }
+  }
+
+  async compressVideo(inputBuffer, onProgress) {
+    let inputTempFile = null;
+    let outputTempFile = null;
+
+    try {
+      // Create temporary input file from buffer
+      inputTempFile = await this.createTempFile(inputBuffer);
+
+      // Create temporary output file
+      outputTempFile = await this.createTempFile(Buffer.alloc(0), ".mp4");
+
+      return new Promise((resolve, reject) => {
+        const command = ffmpeg(inputTempFile.path)
+          .videoCodec("libx264")
+          .audioCodec("aac")
+          .size("1280x720")
+          .videoBitrate("1000k")
+          .audioBitrate("128k")
+          .format("mp4")
+          .on("progress", (progress) => {
+            if (onProgress) {
+              onProgress(Math.round(progress.percent || 0));
+            }
+          })
+          .on("end", async () => {
+            try {
+              // Read compressed video into buffer
+              const compressedBuffer = await this.readFileToBuffer(
+                outputTempFile.path
+              );
+
+              // Clean up temporary files AFTER ffmpeg completes successfully
+              if (inputTempFile) {
+                inputTempFile.cleanup();
+              }
+              if (outputTempFile) {
+                outputTempFile.cleanup();
+              }
+
+              resolve(compressedBuffer);
+            } catch (readError) {
+              // Clean up on read error
+              if (inputTempFile) {
+                inputTempFile.cleanup();
+              }
+              if (outputTempFile) {
+                outputTempFile.cleanup();
+              }
+              reject(readError);
+            }
+          })
+          .on("error", (err) => {
+            // Clean up temporary files AFTER ffmpeg fails
+            if (inputTempFile) {
+              inputTempFile.cleanup();
+            }
+            if (outputTempFile) {
+              outputTempFile.cleanup();
+            }
+            reject(err);
+          });
+
+        command.save(outputTempFile.path);
+      });
+    } catch (error) {
+      // Clean up on error during temp file creation
+      if (inputTempFile) {
+        inputTempFile.cleanup();
+      }
+      if (outputTempFile) {
+        outputTempFile.cleanup();
+      }
+      throw error;
+    }
+  }
+
+  async extractFrames(videoBuffer, videoId, onProgress) {
+    let inputTempFile = null;
+    let tempDir = null;
+
+    try {
+      // Create temporary input file from buffer
+      inputTempFile = await this.createTempFile(videoBuffer);
+
+      // Create temporary directory for frames
+      tempDir = await this.createTempDir();
+      const framesOutputDir = tempDir.path;
+
+      return new Promise((resolve, reject) => {
+        const command = ffmpeg(inputTempFile.path)
+          .fps(1) // Extract 1 frame per second
+          .format("image2")
+          .on("progress", (progress) => {
+            if (onProgress) {
+              onProgress(Math.round(progress.percent || 0));
+            }
+          })
+          .on("end", async () => {
+            try {
+              // Read all extracted frames into buffers
+              const frameFiles = fs
+                .readdirSync(framesOutputDir)
+                .filter((file) => file.endsWith(".png"))
+                .sort()
+                .map((file) => path.join(framesOutputDir, file));
+
+              const frameData = [];
+              for (let i = 0; i < frameFiles.length; i++) {
+                const frameBuffer = await this.readFileToBuffer(frameFiles[i]);
+                frameData.push({
+                  buffer: frameBuffer,
+                  filename: `frame_${String(i + 1).padStart(3, "0")}.png`,
+                  index: i + 1,
+                });
+              }
+
+              // Clean up temporary files AFTER ffmpeg completes successfully
+              if (inputTempFile) {
+                inputTempFile.cleanup();
+              }
+              if (tempDir) {
+                tempDir.cleanup();
+              }
+
+              resolve(frameData);
+            } catch (readError) {
+              // Clean up on read error
+              if (inputTempFile) {
+                inputTempFile.cleanup();
+              }
+              if (tempDir) {
+                tempDir.cleanup();
+              }
+              reject(readError);
+            }
+          })
+          .on("error", (err) => {
+            // Clean up temporary files AFTER ffmpeg fails
+            if (inputTempFile) {
+              inputTempFile.cleanup();
+            }
+            if (tempDir) {
+              tempDir.cleanup();
+            }
+            reject(err);
+          });
+
+        command.save(path.join(framesOutputDir, "frame_%03d.png"));
+      });
+    } catch (error) {
+      // Clean up on error during temp file creation
+      if (inputTempFile) {
+        inputTempFile.cleanup();
+      }
+      if (tempDir) {
+        tempDir.cleanup();
+      }
+      throw error;
+    }
   }
 
   async cleanup(videoId) {
-    const framesDir = path.join(this.framesDir, videoId);
-    if (fs.existsSync(framesDir)) {
-      fs.rmSync(framesDir, { recursive: true, force: true });
-    }
+    // With temporary files, cleanup is handled automatically
+    // This method is kept for compatibility but doesn't need to do anything
+    console.log(
+      `🧹 Cleanup completed for video: ${videoId} (using temporary files)`
+    );
   }
 }

@@ -29,9 +29,6 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files (uploaded videos)
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
-
 // API Routes
 app.use("/api/health", healthRoutes);
 app.use("/api/upload", uploadRoutes);
@@ -75,6 +72,8 @@ app.listen(PORT, () => {
   } else {
     console.log(`🪣 S3 Bucket: ${process.env.MY_APP_AWS_S3_BUCKET}`);
   }
+
+  console.log("💾 Using in-memory file processing with temporary files");
 });
 
 export default app;

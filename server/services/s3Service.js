@@ -16,24 +16,23 @@ export class S3Service {
     }
   }
 
-  async uploadVideo(filePath, key) {
+  async uploadVideo(videoBuffer, key) {
     if (!this.useS3) {
       if (process.env.NODE_ENV === "production") {
         throw new Error(
           "S3 configuration is required for video uploads in production"
         );
       }
-      // Return local path if S3 is not configured
-      return { url: `/uploads/${path.basename(filePath)}`, isLocal: true };
+      // In development without S3, we can't store the video, so return a placeholder
+      console.log("⚠️ S3 not configured, video upload skipped (development mode)");
+      return { url: null, key: null, isLocal: true };
     }
 
     try {
-      const fileStream = fs.createReadStream(filePath);
-
       const uploadParams = {
         Bucket: this.bucket,
         Key: `videos/${key}`,
-        Body: fileStream,
+        Body: videoBuffer,
         ContentType: "video/mp4",
         ACL: "public-read",
       };
@@ -56,11 +55,11 @@ export class S3Service {
 
       // Fallback to local storage only in development
       console.log("⚠️ Falling back to local storage (development only)");
-      return { url: `/uploads/${path.basename(filePath)}`, isLocal: true };
+      return { url: null, key: null, isLocal: true };
     }
   }
 
-  async uploadImage(filePath, key) {
+  async uploadImage(imageBuffer, key) {
     if (!this.useS3) {
       if (process.env.NODE_ENV === "production") {
         throw new Error(
@@ -75,12 +74,10 @@ export class S3Service {
     }
 
     try {
-      const fileStream = fs.createReadStream(filePath);
-
       const uploadParams = {
         Bucket: this.bucket,
         Key: `screenshots/${key}`,
-        Body: fileStream,
+        Body: imageBuffer,
         ContentType: "image/png",
         ACL: "public-read",
       };
@@ -106,6 +103,27 @@ export class S3Service {
         "⚠️ Image upload failed, continuing without image (development mode)"
       );
       return { url: null, key: null, isLocal: true };
+    }
+  }
+
+  async downloadVideo(key) {
+    if (!this.useS3) {
+      throw new Error("S3 configuration is required for video downloads");
+    }
+
+    try {
+      const downloadParams = {
+        Bucket: this.bucket,
+        Key: key,
+      };
+
+      const result = await s3.getObject(downloadParams).promise();
+      console.log(`✅ Video downloaded from S3: ${key}`);
+      
+      return result.Body;
+    } catch (error) {
+      console.error("❌ S3 video download error:", error);
+      throw new Error(`Failed to download video from S3: ${error.message}`);
     }
   }
 

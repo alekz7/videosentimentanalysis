@@ -1,7 +1,5 @@
 import { bedrock, BEDROCK_MODEL_ID, rekognition } from "../config/aws.js";
 import { S3Service } from "./s3Service.js";
-import fs from "fs";
-import path from "path";
 
 export class SentimentAnalyzer {
   constructor() {
@@ -12,95 +10,16 @@ export class SentimentAnalyzer {
     this.s3Service = new S3Service();
   }
 
-  // This code analyze the image using prompt engineering but is going to be replaced by Amazon Rekognition service
-  // async analyzeFrameWithPrompt(framePath, timestamp) {
-  //   if (this.mockMode) {
-  //     return this.getMockSentiment(timestamp);
-  //   }
-
-  //   try {
-  //     // Read image file and convert to base64
-  //     const imageBuffer = fs.readFileSync(framePath);
-  //     const base64Image = imageBuffer.toString("base64");
-
-  //     const prompt = `
-  //       Analyze the facial expression in this image and determine the primary emotion.
-  //       Return only a JSON object with this exact format:
-  //       {
-  //         "sentiment": "happy|neutral|sad|angry|surprised|fearful",
-  //         "confidence": 0.85
-  //       }
-
-  //       Base your analysis on facial features, expressions, and overall emotional indicators.
-  //       The confidence should be between 0 and 1.
-  //     `;
-
-  //     const requestBody = {
-  //       anthropic_version: "bedrock-2023-05-31",
-  //       max_tokens: 100,
-  //       messages: [
-  //         {
-  //           role: "user",
-  //           content: [
-  //             {
-  //               type: "text",
-  //               text: prompt,
-  //             },
-  //             {
-  //               type: "image",
-  //               source: {
-  //                 type: "base64",
-  //                 media_type: "image/png",
-  //                 data: base64Image,
-  //               },
-  //             },
-  //           ],
-  //         },
-  //       ],
-  //     };
-
-  //     const response = await bedrock
-  //       .invokeModel({
-  //         modelId: BEDROCK_MODEL_ID,
-  //         contentType: "application/json",
-  //         accept: "application/json",
-  //         body: JSON.stringify(requestBody),
-  //       })
-  //       .promise();
-
-  //     const responseBody = JSON.parse(response.body.toString());
-  //     const content = responseBody.content[0].text;
-
-  //     // Parse the JSON response
-  //     const sentimentData = JSON.parse(content);
-
-  //     return {
-  //       timestamp,
-  //       sentiment: sentimentData.sentiment,
-  //       confidence: sentimentData.confidence,
-  //     };
-  //   } catch (error) {
-  //     console.error("Error analyzing frame:", error);
-  //     // Fallback to mock data on error
-  //     return this.getMockSentiment(timestamp);
-  //   }
-  // }
-
-  async analyzeFrame(framePath, timestamp) {
+  async analyzeFrame(frameBuffer, frameFilename, videoId, timestamp) {
     let imageUrl = null;
 
     try {
-      // Extract video ID from frame path (e.g., ./temp/frames/video_id/frame_001.png)
-      const pathParts = framePath.split(path.sep);
-      const videoId = pathParts[pathParts.length - 2]; // Get video ID from directory name
-      const frameFilename = pathParts[pathParts.length - 1]; // Get frame filename
-
       // Construct S3 key for the frame
       const s3Key = `${videoId}/${frameFilename}`;
 
-      // Upload frame to S3
+      // Upload frame buffer to S3
       console.log(`📸 Uploading frame to S3: ${s3Key}`);
-      const uploadResult = await this.s3Service.uploadImage(framePath, s3Key);
+      const uploadResult = await this.s3Service.uploadImage(frameBuffer, s3Key);
       imageUrl = uploadResult.url;
 
       if (imageUrl) {
@@ -122,17 +41,13 @@ export class SentimentAnalyzer {
     }
 
     try {
-      // Read image file
-      const imageBuffer = fs.readFileSync(framePath);
-
       const params = {
-        Image: { Bytes: imageBuffer },
+        Image: { Bytes: frameBuffer },
         Attributes: ["ALL"],
       };
 
       // Use Rekognition to detect faces and emotions
       const data = await this.rekognition.detectFaces(params).promise();
-      // console.log("Rekognition data:", data);
 
       const emotions = data.FaceDetails[0]?.Emotions || [];
 
@@ -177,7 +92,11 @@ export class SentimentAnalyzer {
     } catch (error) {
       console.error("Error analyzing frame with Rekognition:", error);
       // Fallback to mock data on error
-      return this.getMockSentiment(timestamp);
+      const mockResult = this.getMockSentiment(timestamp);
+      return {
+        ...mockResult,
+        imageUrl,
+      };
     }
   }
 
@@ -214,22 +133,27 @@ export class SentimentAnalyzer {
     };
   }
 
-  async analyzeBatch(frames, onProgress) {
+  async analyzeBatch(frameData, onProgress) {
     const results = [];
 
-    for (let i = 0; i < frames.length; i++) {
-      const framePath = frames[i];
-      const timestamp = this.frameToTimestamp(i + 1);
+    for (let i = 0; i < frameData.length; i++) {
+      const frame = frameData[i];
+      const timestamp = this.frameToTimestamp(frame.index);
 
       try {
         console.log(
-          `🧠 Analyzing frame ${i + 1}/${frames.length}: ${timestamp}`
+          `🧠 Analyzing frame ${i + 1}/${frameData.length}: ${timestamp}`
         );
-        const result = await this.analyzeFrame(framePath, timestamp);
+        const result = await this.analyzeFrame(
+          frame.buffer,
+          frame.filename,
+          frame.videoId || 'unknown',
+          timestamp
+        );
         results.push(result);
 
         if (onProgress) {
-          onProgress(Math.round(((i + 1) / frames.length) * 100));
+          onProgress(Math.round(((i + 1) / frameData.length) * 100));
         }
       } catch (error) {
         console.error(`Error analyzing frame ${i + 1}:`, error);
