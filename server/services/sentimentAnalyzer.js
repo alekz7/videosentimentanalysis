@@ -222,6 +222,9 @@ export class SentimentAnalyzer {
       const timestamp = this.frameToTimestamp(i + 1);
 
       try {
+        console.log(
+          `🧠 Analyzing frame ${i + 1}/${frames.length}: ${timestamp}`
+        );
         const result = await this.analyzeFrame(framePath, timestamp);
         results.push(result);
 
