@@ -139,7 +139,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-dark-900 font-inter relative">
+    <div className="min-h-screen bg-dark-900 font-inter relative pt-24">
       {renderNavigation()}
 
       <AnimatePresence mode="wait">
