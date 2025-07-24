@@ -133,69 +133,142 @@ export const useVideoAnalysis = () => {
     []
   );
 
+  // const pollProcessingStatus = useCallback(
+  //   async (videoId: string, jobId: string): Promise<void> => {
+  //     const pollInterval = 2000; // Poll every 2 seconds
+  //     const maxAttempts = 300; // 10 minutes max
+  //     let attempts = 0;
+
+  //     const poll = async (): Promise<void> => {
+  //       try {
+  //         attempts++;
+  //         const response = await axios.get(
+  //           `${API_BASE_URL}/upload/${videoId}/status/${jobId}`
+  //         );
+  //         const { status, progress: serverProgress, error } = response.data;
+
+  //         if (error) {
+  //           throw new Error(error);
+  //         }
+
+  //         // Update progress based on server response
+  //         let stage: UploadProgress["stage"] = "analyzing";
+  //         let message = "Processing video...";
+
+  //         if (serverProgress <= 30) {
+  //           stage = "compressing";
+  //           message = "Compressing video...";
+  //         } else if (serverProgress <= 70) {
+  //           stage = "analyzing";
+  //           message = "Analyzing sentiment...";
+  //         } else if (serverProgress < 100) {
+  //           stage = "analyzing";
+  //           message = "Finalizing analysis...";
+  //         } else {
+  //           stage = "completed";
+  //           message = "Analysis complete!";
+  //         }
+
+  //         setProgress({
+  //           percentage: serverProgress || 0,
+  //           stage,
+  //           message,
+  //         });
+
+  //         if (status === "completed") {
+  //           setIsProcessing(false);
+  //           return; // Processing complete
+  //         } else if (status === "failed") {
+  //           setIsProcessing(false);
+  //           throw new Error("Video processing failed");
+  //         } else if (attempts >= maxAttempts) {
+  //           setIsProcessing(false);
+  //           throw new Error("Processing timeout - please try again");
+  //         } else {
+  //           // Continue polling
+  //           setTimeout(poll, pollInterval);
+  //         }
+  //       } catch (error) {
+  //         console.error("Polling error:", error);
+  //         setIsProcessing(false);
+  //         throw error;
+  //       }
+  //     };
+
+  //     await poll();
+  //   },
+  //   []
+  // );
+
   const pollProcessingStatus = useCallback(
     async (videoId: string, jobId: string): Promise<void> => {
       const pollInterval = 2000; // Poll every 2 seconds
       const maxAttempts = 300; // 10 minutes max
       let attempts = 0;
 
-      const poll = async (): Promise<void> => {
-        try {
-          attempts++;
-          const response = await axios.get(
-            `${API_BASE_URL}/upload/${videoId}/status/${jobId}`
-          );
-          const { status, progress: serverProgress, error } = response.data;
+      return new Promise((resolve, reject) => {
+        const poll = async (): Promise<void> => {
+          try {
+            attempts++;
+            const response = await axios.get(
+              `${API_BASE_URL}/upload/${videoId}/status/${jobId}`
+            );
+            const { status, progress: serverProgress, error } = response.data;
 
-          if (error) {
-            throw new Error(error);
-          }
+            if (error) {
+              reject(new Error(error));
+              return;
+            }
 
-          // Update progress based on server response
-          let stage: UploadProgress["stage"] = "analyzing";
-          let message = "Processing video...";
+            // Update progress based on server response
+            let stage: UploadProgress["stage"] = "analyzing";
+            let message = "Processing video...";
 
-          if (serverProgress <= 30) {
-            stage = "compressing";
-            message = "Compressing video...";
-          } else if (serverProgress <= 70) {
-            stage = "analyzing";
-            message = "Analyzing sentiment...";
-          } else if (serverProgress < 100) {
-            stage = "analyzing";
-            message = "Finalizing analysis...";
-          } else {
-            stage = "completed";
-            message = "Analysis complete!";
-          }
+            if (serverProgress <= 30) {
+              stage = "compressing";
+              message = "Compressing video...";
+            } else if (serverProgress <= 70) {
+              stage = "analyzing";
+              message = "Analyzing sentiment...";
+            } else if (serverProgress < 100) {
+              stage = "analyzing";
+              message = "Finalizing analysis...";
+            } else {
+              stage = "completed";
+              message = "Analysis complete!";
+            }
 
-          setProgress({
-            percentage: serverProgress || 0,
-            stage,
-            message,
-          });
+            setProgress({
+              percentage: serverProgress || 0,
+              stage,
+              message,
+            });
 
-          if (status === "completed") {
+            if (status === "completed") {
+              setIsProcessing(false);
+              resolve(); // Resolve the Promise when complete
+              return;
+            } else if (status === "failed") {
+              setIsProcessing(false);
+              reject(new Error("Video processing failed"));
+              return;
+            } else if (attempts >= maxAttempts) {
+              setIsProcessing(false);
+              reject(new Error("Processing timeout - please try again"));
+              return;
+            } else {
+              // Continue polling after delay
+              setTimeout(poll, pollInterval);
+            }
+          } catch (error) {
+            console.error("Polling error:", error);
             setIsProcessing(false);
-            return; // Processing complete
-          } else if (status === "failed") {
-            setIsProcessing(false);
-            throw new Error("Video processing failed");
-          } else if (attempts >= maxAttempts) {
-            setIsProcessing(false);
-            throw new Error("Processing timeout - please try again");
-          } else {
-            // Continue polling
-            setTimeout(poll, pollInterval);
+            reject(error);
           }
-        } catch (error) {
-          console.error("Polling error:", error);
-          setIsProcessing(false);
-          throw error;
-        }
-      };
+        };
 
-      await poll();
+        poll(); // Start polling
+      });
     },
     []
   );
